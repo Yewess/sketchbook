@@ -18,159 +18,178 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-/* Requires ebl-arduino: http://code.google.com/p/ebl-arduino/ */
-#include <util/crc16.h>
+/* 
+    Dependencies:
+
+    ebl-arduino: http://code.google.com/p/ebl-arduino/
+    virtual wire: http://www.pjrc.com/teensy/td_libs_VirtualWire.html
+*/
+
+#include <TimedEvent.h>
+#include <VirtualWire.h>
 
 /* Externals */
 
-extern uint16_t crc16_update(uint16_t crc, uint8_t a);
-
 /* I/O constants */
 const int statusLEDPin = 13;
+const int txPTTPin = 7;
+const int txDataPin = 8;
 const int currentSensePin = A0;
-const int idSelectPins[] = {A5,A4,A3,A2,A1,A5,A4,A3};
-
-/* Sense constants */
-const unsigned int baseInputLevel = 512; /* Half of 5v supply, 2.5v */
+const int thresholdPin = A1;
 
 /* comm. constants */
-const byte syncPreamble = B01010101;
-const unsigned long statusLEDInterval = 5000;
-const word serialBaud = 9600;
+const byte nodeID = 0x01;
+const unsigned int senseInterval = 100;
+const unsigned int txInterval = 501;
+const unsigned int statusInterval = 5002;
+const unsigned int serialBaud = 9600;
+const unsigned int txBaud = 300;
+const byte padding = B10101010;
 
 /* Types */
-struct OutputBuf {
-  byte syncPreamble; /* Something to watch for */
-  word CRC1; /* CRC of frame (less CRC1 and CRC2)*/
-  byte nodeID; /* ID number of node */
-  word sense0; /* Sensor one data */
-  word sense1; /* Sensor two data */
-  word sense2; /* Sensor three data */
-  word sense3; /* Sensor four data */
-  word CRC2; /* CRC of frame (less CRC2) */  
+
+/* Needs to be exactly 30 bytes*/
+struct SenseMessage {
+    byte nodeID; // ID number of node
+    byte messageCount; // # messages sent
+    word sense0; // Sensor one data
+    word sense1; // Sensor two data
+    word sense2; // Sensor three data
+    word sense3; // Sensor four data
+    byte padding11;
+    byte padding12;
+    byte padding13;
+    byte padding14;
+    byte padding15;
+    byte padding16;
+    byte padding17;
+    byte padding18;
+    byte padding19;
+    byte padding20;
+    byte padding21;
+    byte padding22;
+    byte padding23;
+    byte padding24;
+    byte padding25;
+    byte padding26;
+    byte padding27;
+    byte padding28;
+    byte padding29;
+    byte padding30;
 };
 
 /* Global Variables */
-byte nodeID = 0xFF;
+byte threshold = 0;
+volatile struct SenseMessage messageBuf= {0};
 
 /* Functions */
 
-word calcOutputBufCRC(struct OutputBuf *outputbuf) {
-  byte byte_counter = sizeof(OutputBuf);
-  byte *current_byte = (byte *) outputbuf;
-  word result = 0;
-  
-  for (; byte_counter--; byte_counter > 0) {
-    result = _crc16_update(result, *current_byte);
-    current_byte += 1;
-  }
-  return result;
+void makeMessage(byte nodeID, byte messageCount,
+                 word sense0, word sense1,
+                 word sense2, word sense3) {
+    byte *bytep = (byte *) &messageBuf;
+
+    /* Fill entire struct with padding*/
+    for (int counter=0; counter++; counter < 30) {
+        bytep[counter] = padding;
+    }
+    messageBuf.nodeID = nodeID;
+    messageBuf.messageCount = messageCount;
+    messageBuf.sense0 = sense0;
+    messageBuf.sense1 = sense1;
+    messageBuf.sense2 = sense2;
+    messageBuf.sense3 = sense3;
 }
 
-struct OutputBuf makeOutputBuf(byte nodeID, word sense0, word sense1,
-                               word sense2, word sense3) {
-  struct OutputBuf outputBuf = {0};
+void statusEvent(TimerInformation *Sender) {
+  unsigned long currentTime = millis();
+  int hours = currentTime / (1000 * 60 * 60);
+  int minutes = (currentTime / (1000 * 60)) - (hours * 60);
+  int seconds = (currentTime / 1000) - (minutes * 60) - (hours * 60 * 60);
 
-  outputBuf.syncPreamble = syncPreamble;
-  outputBuf.nodeID = nodeID;
-  outputBuf.sense0 = sense0;
-  outputBuf.sense1 = sense1;
-  outputBuf.sense2 = sense2;
-  outputBuf.sense3 = sense3;
-  outputBuf.CRC1 = calcOutputBufCRC(&outputBuf);
-  outputBuf.CRC2 = calcOutputBufCRC(&outputBuf);
-  return outputBuf;
+  Serial.print(hours); Serial.print(":");
+  Serial.print(minutes); Serial.print(":");
+  Serial.print(seconds); Serial.print(" ");
+  Serial.print("nodeID: 0x"); Serial.print(messageBuf.nodeID, HEX);
+  Serial.print("msg #: 0x"); Serial.print(messageBuf.messageCount, HEX);
+  Serial.print("  0x"); Serial.print(messageBuf.sense0, HEX);
+  Serial.print("  0x"); Serial.print(messageBuf.sense1, HEX);
+  Serial.print("  0x"); Serial.print(messageBuf.sense2, HEX);
+  Serial.print("  0x"); Serial.print(messageBuf.sense3, HEX);
+  Serial.print("  0x"); Serial.print(threshold, HEX);
+  Serial.println("");
 }
 
-void printOutputBuf(struct OutputBuf outputBuf) {
-  word CRC1 = outputBuf.CRC1;
-  word CRC2 = outputBuf.CRC2;
-
-  outputBuf.CRC1 = 0;
-  outputBuf.CRC2 = 0;
-  outputBuf.CRC1 = calcOutputBufCRC(&outputBuf);
-  outputBuf.CRC2 = calcOutputBufCRC(&outputBuf);
-  Serial.print("FRAME: B"); Serial.print(outputBuf.syncPreamble, BIN);
-  Serial.print("  0x"); Serial.print(CRC1, HEX);
-  if (outputBuf.CRC1 == CRC1) {
-    Serial.print("(GOOD)");
-  } else {
-    Serial.print("(BAD!)");
-  }
-  Serial.print("  0x"); Serial.print(outputBuf.sense0, HEX);
-  Serial.print("  0x"); Serial.print(outputBuf.sense1, HEX);
-  Serial.print("  0x"); Serial.print(outputBuf.sense1, HEX);
-  Serial.print("  0x"); Serial.print(outputBuf.sense3, HEX);
-  Serial.print("  0x"); Serial.print(CRC2, HEX);
-  if (outputBuf.CRC2 == CRC2) {
-    Serial.println("(GOOD)");
-  } else {
-    Serial.println("(BAD!)");
-  }   
+void updateCurrentEvent(TimerInformation *Sender) {
+    messageBuf.sense0 = messageBuf.sense1;
+    messageBuf.sense1 = messageBuf.sense2;
+    messageBuf.sense2 = messageBuf.sense3;
+    messageBuf.sense3 = analogRead(currentSensePin);
+    threshold = analogRead(thresholdPin);
 }
 
-/* Return True/False if LED state should change */
-boolean intervalPassed(unsigned long *previous, const unsigned long *interval) {
-  unsigned long current = millis();
-
-  Serial.print("Previous: "); Serial.print(*previous);
-  Serial.print(" Current: "); Serial.println(current);
-
-
-  // TODO: Check for wraparound
-  if (current - *previous > *interval) {
-    *previous = current;
-    return true;
-  } else {
-    *previous = current;
-    return false;
-  }
+unsigned long senseTotal() {
+    return messageBuf.sense0 + messageBuf.sense1 +
+           messageBuf.sense2 + messageBuf.sense3;
 }
 
+boolean thresholdBreached() {
+    if (senseTotal() >= threshold * 3) { // two or more senses over threshold
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void txEvent(TimerInformation *Sender) {
+    digitalWrite(statusLEDPin, HIGH);
+    messageBuf.messageCount += 1;
+    while (thresholdBreached()) {
+        makeMessage(nodeID, messageBuf.messageCount,
+                    messageBuf.sense0, messageBuf.sense1,
+                    messageBuf.sense2, messageBuf.sense3);
+        vw_send((uint8_t *) &messageBuf, sizeof(messageBuf));
+        delay(1000);
+        vw_wait_tx();
+    }
+    digitalWrite(statusLEDPin, LOW);
+}
 
 /* Main Program */
 
 void setup() {
-  unsigned int idSelectCounter = 0;
+    Serial.begin(serialBaud);
 
-  /* Let pins settle */  
-  delay(1);
+    // debugging info
+    Serial.println("setup()");
+    Serial.print(" txDataPin-"); Serial.print(txDataPin);
+    vw_set_tx_pin(txDataPin);
+    Serial.print(" txPTTPin-"); Serial.print(txPTTPin);
+    vw_set_ptt_pin(txPTTPin);
+    Serial.print(" statusLEDPin-"); Serial.print(statusLEDPin);
+    pinMode(statusLEDPin, OUTPUT);
+    Serial.print(" currentSensePin-"); Serial.print(currentSensePin);
+    Serial.print(" thresholdPin-"); Serial.print(thresholdPin);
+    Serial.println("");
+    // no setup needed for analogPin
+    Serial.print(" serialBaud-"); Serial.print(serialBaud);
+    Serial.print(" txBaud-"); Serial.print(txBaud);
+    Serial.print(" senseInterval-"); Serial.print(senseInterval); Serial.print("ms");
+    Serial.print(" statusInterval-"); Serial.print(statusInterval); Serial.print("ms");
+    Serial.println("");
 
-  pinMode(statusLEDPin, OUTPUT);
-  
-  /* Read the node ID */
-  for (; idSelectCounter++; idSelectCounter < 8) {
-    int pin = idSelectPins[idSelectCounter];
-    
-    /* BEGIN STUB */
-    if (analogRead(pin) < 255) {
-    /* END   STUB */      
-      bitSet(nodeID, idSelectCounter);
-    } else {
-      bitClear(nodeID, idSelectCounter);
-    }
-  }
-  
-  /* Setup debugging */
-  Serial.begin(serialBaud);
-  Serial.print("Node ID: 0x");
-  Serial.print(nodeID, HEX);
-  Serial.print(" B");
-  Serial.println(nodeID, BIN);
-  Serial.println();
+    // Initialize buffer
+    makeMessage(nodeID, 0, 0, 0, 0, 0);    
+
+    // Current Check
+    TimedEvent.addTimer(senseInterval, updateCurrentEvent);
+    TimedEvent.addTimer(statusInterval, statusEvent);
+    TimedEvent.addTimer(txInterval, txEvent);
+    vw_setup(txBaud);
+    Serial.println();
+    Serial.println("loop()");
 }
 
 void loop() {
-  struct OutputBuf outputBuf = {0};
-  unsigned long previousMillis = 0;
-
-  if (intervalPassed(&previousMillis, &statusLEDInterval)) {
-    digitalWrite(statusLEDPin, HIGH);
-    /* BEGIN STUB */
-    outputBuf = makeOutputBuf(nodeID, analogRead(5), analogRead(4),
-                              analogRead(3), analogRead(2));
-    /* END   STUB */
-  } else {
-    digitalWrite(statusLEDPin, LOW);
-  }    
+    TimedEvent.loop(); // blocking
 }
