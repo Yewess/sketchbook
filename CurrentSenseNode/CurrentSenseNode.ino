@@ -30,164 +30,206 @@
 
 /* Externals */
 
+/* Definitions */
+
+#define NODEID (0x01) // unique to this node
+#define ACHERTZ (60)
+#define DATABUFLEN (14) // words
+#define SAMPLESPERINTERVAL 10 // number of peak detection measurements
+#define TXEVENTID 1 //id number of tx timer
+
+/* Measurement Constants */
+const unsigned long acHalfWave = (1000000/(ACHERTZ*2)); // microseconds
+/* Offset after all reads so subsequent measurements 
+   capture a slightly different waveform. This will
+   help highlight flux changes constrained to a specific
+   phase of the wave */
+const unsigned long asyncOffset = acHalfWave / (SAMPLESPERINTERVAL + 1);
+
 /* I/O constants */
 const int statusLEDPin = 13;
-const int txPTTPin = 7;
+const int txEnablePin = 7;
 const int txDataPin = 8;
 const int currentSensePin = A0;
 const int thresholdPin = A1;
+const int VCCRefPin = A2;
 
 /* comm. constants */
-const byte nodeID = 0x01;
-const unsigned int senseInterval = 100;
+const unsigned int senseInterval = 200;
 const unsigned int txInterval = 501;
-const unsigned int statusInterval = 5002;
 const unsigned int serialBaud = 9600;
 const unsigned int txBaud = 300;
-const byte padding = B10101010;
 
 /* Types */
 
 /* Needs to be exactly 30 bytes*/
-struct SenseMessage {
-    byte nodeID; // ID number of node
-    byte messageCount; // # messages sent
-    word sense0; // Sensor one data
-    word sense1; // Sensor two data
-    word sense2; // Sensor three data
-    word sense3; // Sensor four data
-    byte padding11;
-    byte padding12;
-    byte padding13;
-    byte padding14;
-    byte padding15;
-    byte padding16;
-    byte padding17;
-    byte padding18;
-    byte padding19;
-    byte padding20;
-    byte padding21;
-    byte padding22;
-    byte padding23;
-    byte padding24;
-    byte padding25;
-    byte padding26;
-    byte padding27;
-    byte padding28;
-    byte padding29;
-    byte padding30;
+struct MessageStruct {
+    char nodeID; // ID number of node (byte)
+    char messageCount; // # messages sent 
+    int data[DATABUFLEN]; /* Must be 30 bytes total*/
 };
 
 /* Global Variables */
-byte threshold = 0;
-volatile struct SenseMessage messageBuf= {0};
+int threshold = 0; // range: -512 - 512
+int VCCRef = 0; // range 0 - 512
+volatile struct MessageStruct messageBuf = {0};
+unsigned long analogReadMicroseconds = 0;
 
 /* Functions */
 
-void makeMessage(byte nodeID, byte messageCount,
-                 word sense0, word sense1,
-                 word sense2, word sense3) {
-    byte *bytep = (byte *) &messageBuf;
+void printStatus(void) {
+    unsigned long currentTime = millis();
+    int seconds = (currentTime / 1000);
+    int minutes = seconds / 60;
+    seconds = seconds % 60;
+    int hours = minutes / 60;
+    minutes = minutes % 60;
+    int days = hours / 24;
+    hours = hours % 24;
 
-    /* Fill entire struct with padding*/
-    for (int counter=0; counter++; counter < 30) {
-        bytep[counter] = padding;
+    Serial.print(days); Serial.print(":");
+    Serial.print(hours); Serial.print(":");
+    Serial.print(minutes); Serial.print(":");
+    Serial.print(seconds);
+    Serial.print("  nodeID: "); Serial.print(messageBuf.nodeID);
+    Serial.print("  msg #: "); Serial.print(messageBuf.messageCount);
+    Serial.print("  VCCRef: "); Serial.print(VCCRef);
+    Serial.print("  Thrsh: "); Serial.print(threshold);
+    Serial.print("  Data: ");
+    for (char dataCount=DATABUFLEN; dataCount--; dataCount > 0) {
+        Serial.print(messageBuf.data[dataCount-1]);
+        Serial.print(" ");
     }
-    messageBuf.nodeID = nodeID;
-    messageBuf.messageCount = messageCount;
-    messageBuf.sense0 = sense0;
-    messageBuf.sense1 = sense1;
-    messageBuf.sense2 = sense2;
-    messageBuf.sense3 = sense3;
-}
-
-void statusEvent(TimerInformation *Sender) {
-  unsigned long currentTime = millis();
-  int hours = currentTime / (1000 * 60 * 60);
-  int minutes = (currentTime / (1000 * 60)) - (hours * 60);
-  int seconds = (currentTime / 1000) - (minutes * 60) - (hours * 60 * 60);
-
-  Serial.print(hours); Serial.print(":");
-  Serial.print(minutes); Serial.print(":");
-  Serial.print(seconds); Serial.print(" ");
-  Serial.print("nodeID: 0x"); Serial.print(messageBuf.nodeID, HEX);
-  Serial.print("msg #: 0x"); Serial.print(messageBuf.messageCount, HEX);
-  Serial.print("  0x"); Serial.print(messageBuf.sense0, HEX);
-  Serial.print("  0x"); Serial.print(messageBuf.sense1, HEX);
-  Serial.print("  0x"); Serial.print(messageBuf.sense2, HEX);
-  Serial.print("  0x"); Serial.print(messageBuf.sense3, HEX);
-  Serial.print("  0x"); Serial.print(threshold, HEX);
-  Serial.println("");
-}
-
-void updateCurrentEvent(TimerInformation *Sender) {
-    messageBuf.sense0 = messageBuf.sense1;
-    messageBuf.sense1 = messageBuf.sense2;
-    messageBuf.sense2 = messageBuf.sense3;
-    messageBuf.sense3 = analogRead(currentSensePin);
-    threshold = analogRead(thresholdPin);
-}
-
-unsigned long senseTotal() {
-    return messageBuf.sense0 + messageBuf.sense1 +
-           messageBuf.sense2 + messageBuf.sense3;
+    Serial.println("");
 }
 
 boolean thresholdBreached() {
-    if (senseTotal() >= threshold * 3) { // two or more senses over threshold
+    int breachCount=0;
+
+    for (char dataCount=DATABUFLEN; dataCount--; dataCount > 0) {
+        if (abs(messageBuf.data[dataCount-1]) > threshold) {
+            breachCount++;
+        }
+    }
+
+    printStatus();
+
+    // One quarter of samples must breach
+    if (breachCount > (DATABUFLEN/4)) {
         return true;
     } else {
         return false;
     }
 }
 
-void txEvent(TimerInformation *Sender) {
-    digitalWrite(statusLEDPin, HIGH);
-    messageBuf.messageCount += 1;
-    while (thresholdBreached()) {
-        makeMessage(nodeID, messageBuf.messageCount,
-                    messageBuf.sense0, messageBuf.sense1,
-                    messageBuf.sense2, messageBuf.sense3);
-        vw_send((uint8_t *) &messageBuf, sizeof(messageBuf));
-        delay(1000);
-        vw_wait_tx();
+void updateCurrentEvent(TimerInformation *Sender) {
+    int highRange=0;
+    int lowRange=0;
+    int currentSample=0;
+    int maxSample=-0;
+
+    VCCRef = analogRead(VCCRefPin);
+    highRange = VCCRef / 2; // Hall effect sensor reports from -1/2vcc to 1/2vcc
+    lowRange = -1 * highRange;
+    VCCRef = map(VCCRef, 0, 1023, lowRange, highRange);
+    threshold = map(analogRead(thresholdPin), 0, 1023, 0, highRange);
+
+    // Fill data elements
+    for (char dataCount=DATABUFLEN; dataCount--; dataCount > 0) {
+
+        // Find peak value
+        for (char sampleCount=SAMPLESPERINTERVAL; sampleCount--; sampleCount > 0) {
+            currentSample = map(analogRead(currentSensePin),
+                                0, 1023,
+                                lowRange, highRange);
+            // Peak detection
+            if (abs(currentSample) > abs(maxSample)) {
+                maxSample = currentSample;
+            }
+            /* delay for one ac half-wave plus small offset so
+               same part of wave isn't measured repeatidly. Reduce
+               by amount of time it takes to perform an analogRead */
+            delayMicroseconds((acHalfWave + asyncOffset) - analogReadMicroseconds);
+        }
+        messageBuf.data[dataCount-1] = maxSample;
     }
-    digitalWrite(statusLEDPin, LOW);
+
+    if (thresholdBreached()) {
+        digitalWrite(txEnablePin, HIGH); // turn on transmitter
+        digitalWrite(statusLEDPin, HIGH);
+        TimedEvent.start(TXEVENTID);
+    } else {
+        TimedEvent.stop(TXEVENTID);
+        digitalWrite(txEnablePin, LOW); // turn off transmitter
+        digitalWrite(statusLEDPin, LOW);
+    }
+}
+
+void txEvent(TimerInformation *Sender) {
+    messageBuf.messageCount += 1;
+    // Transmit new data only while not transmitting old data
+    if ( ! vw_tx_active() ) {
+        vw_send((uint8_t *) &messageBuf, sizeof(messageBuf));
+    }
 }
 
 /* Main Program */
 
 void setup() {
     Serial.begin(serialBaud);
+    int outReadCount=100;
+    int inrReadCount=100;
 
     // debugging info
     Serial.println("setup()");
-    Serial.print(" txDataPin-"); Serial.print(txDataPin);
+    Serial.print("  txDataPin: "); Serial.print(txDataPin);
+    pinMode(txDataPin, OUTPUT);
     vw_set_tx_pin(txDataPin);
-    Serial.print(" txPTTPin-"); Serial.print(txPTTPin);
-    vw_set_ptt_pin(txPTTPin);
-    Serial.print(" statusLEDPin-"); Serial.print(statusLEDPin);
+    Serial.print("  txEnablePin: "); Serial.print(txEnablePin);
+    pinMode(txEnablePin, OUTPUT);
+    vw_set_ptt_pin(statusLEDPin);
+    Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
     pinMode(statusLEDPin, OUTPUT);
-    Serial.print(" currentSensePin-"); Serial.print(currentSensePin);
-    Serial.print(" thresholdPin-"); Serial.print(thresholdPin);
-    Serial.println("");
-    // no setup needed for analogPin
-    Serial.print(" serialBaud-"); Serial.print(serialBaud);
-    Serial.print(" txBaud-"); Serial.print(txBaud);
-    Serial.print(" senseInterval-"); Serial.print(senseInterval); Serial.print("ms");
-    Serial.print(" statusInterval-"); Serial.print(statusInterval); Serial.print("ms");
-    Serial.println("");
+    digitalWrite(statusLEDPin, LOW);
+    Serial.print("  currentSensePin: "); Serial.print(currentSensePin);
+    pinMode(currentSensePin, INPUT);
+    Serial.print("  thresholdPin: "); Serial.print(thresholdPin);
+    pinMode(thresholdPin, INPUT);
+    Serial.print("  VCCRefPin: "); Serial.println(VCCRefPin);
+    pinMode(VCCRefPin, INPUT);
+    Serial.print("serialBaud: "); Serial.print(serialBaud);
+    Serial.print("  txBaud-"); Serial.print(txBaud);
+    vw_setup(txBaud);
+    Serial.print("  Smp. Per. Intvl: "); Serial.print(SAMPLESPERINTERVAL);
+    Serial.print("  senseInterval: "); Serial.print(senseInterval);
+    Serial.println("ms");
+
+    Serial.print("analogRead: ");
+    // Let analog pins settle while measuring read speed
+    analogReadMicroseconds = (millis() * 1000) + micros();
+    for (char outer=outReadCount; outer--; outer > 0) {
+        for (char inner=inrReadCount; inner--; inner > 0) {
+            analogRead(VCCRefPin);
+            analogRead(thresholdPin);
+            analogRead(currentSensePin);
+        }
+    }
+    analogReadMicroseconds = ((millis() * 1000) + micros()) - analogReadMicroseconds;
+    // number of analogReads times number of loops
+    analogReadMicroseconds /= (3 * outReadCount * inrReadCount);
+    Serial.print(analogReadMicroseconds);
+    Serial.print("us  AC 1/2 wave: "); Serial.print(acHalfWave);
+    Serial.print("us  asyncOffset: "); Serial.print(asyncOffset);
+
+    // Setup events
+    TimedEvent.addTimer(senseInterval, updateCurrentEvent);
+    TimedEvent.addTimer(TXEVENTID, txInterval, txEvent);
 
     // Initialize buffer
-    makeMessage(nodeID, 0, 0, 0, 0, 0);    
+    messageBuf.nodeID = NODEID;    
 
-    // Current Check
-    TimedEvent.addTimer(senseInterval, updateCurrentEvent);
-    TimedEvent.addTimer(statusInterval, statusEvent);
-    TimedEvent.addTimer(txInterval, txEvent);
-    vw_setup(txBaud);
-    Serial.println();
-    Serial.println("loop()");
+    // Signal completion
+    Serial.println("us");
 }
 
 void loop() {
