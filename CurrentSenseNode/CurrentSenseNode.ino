@@ -42,13 +42,14 @@
 // Number of measurements to capture per wavelength
 #define SAMPLESPERWAVE (20)
 // Wavelength in microseconds
-#define ACWAVELENGTH (1000000/(ACHERTZ))
+#define ACWAVELENGTH (1000000.0/float(ACHERTZ))
 // Number of microseconds per sample (MUST be larger than AnalogRead)
-#define MICROSPERSAMPLE ((ACWAVELENGTH / SAMPLESPERWAVE) / 2) // Half wavelength
-// Threshold RMS (change required to signal "ON" state)
-#define THRESHOLDRMS (1)
+#define MICROSPERSAMPLE (float(ACWAVELENGTH) / float(SAMPLESPERWAVE))
+// Threshold Sensitivity
+#define THRESHOLDLIMIT (127)
 
 /* I/O constants */
+const int thresholdPin = A1;
 const int statusLEDPin = 13;
 const int txEnablePin = 7;
 const int txDataPin = 8;
@@ -56,48 +57,49 @@ const int currentSensePin = A0;
 
 /* comm. constants */
 const unsigned int senseInterval = 101;
-const unsigned int txInterval = 502;
+const unsigned int txInterval = 202;
 const unsigned int statusInterval = 5003;
 const unsigned int serialBaud = 9600;
 const unsigned int txBaud = 300;
 
 /* Global Variables */
 unsigned long analogReadMicroseconds = 0; // measured in setup()
-int sampleRMS = 0; // measured every senseInterval;
-int sampleBuf[SAMPLESPERWAVE] = {0}; // raw samples, range: -512 - 512
+int sampleLow = 0;
+int sampleHigh = 0;
+int sampleRange = 0;
+int threshold = 0;
 uint8_t nodeID = NODEID;
 
 /* Functions */
 
-int calcRMS(void) {
-    double rms = 0;
-    char index = 0;
-
-    // http://en.wikipedia.org/wiki/Root_Mean_Square
-    // sqrt( (1/SAMPLESPERWAVE) * (sum_samples_sq)  )
-    for (index=0; index < SAMPLESPERWAVE; index++) {
-        rms += float(sampleBuf[index]) * float(sampleBuf[index]);
-    }
-    rms *= (1.0/SAMPLESPERWAVE);
-    return int(sqrt(rms));
-}
-
 void updateCurrentEvent(TimerInformation *Sender) {
     char index=0;
+    char sample=0;
 
+    // reset data
+    sampleHigh = 0;
+    sampleLow = 0;
+    sampleRange = 0;
+
+    threshold = map( analogRead(thresholdPin), 0, 1023, 0, THRESHOLDLIMIT);
     // Fill data elements
     for (index=0; index< SAMPLESPERWAVE; index++) {
-        sampleBuf[index] = map( analogRead(currentSensePin),
-                             0, 1023,
-                             -512, 512);
+        sample= map( analogRead(currentSensePin),
+                     0, 1023,
+                     -512, 512);
+        if (sample > sampleHigh) {
+            sampleHigh = sample;
+        } else if (sample < sampleLow) {
+            sampleLow = sample;
+        }
         // wait difference between MICROSPERSAMPLE and analogReadMicroseconds
         delayMicroseconds(MICROSPERSAMPLE - analogReadMicroseconds);
     }
-    sampleRMS = calcRMS();
+    sampleRange = sampleHigh - sampleLow;
 }
 
 boolean thresholdRMSBreached() {
-    if (sampleRMS >= THRESHOLDRMS) {
+    if (sampleRange >= threshold) {
         return true;
     } else {
         return false;
@@ -106,11 +108,11 @@ boolean thresholdRMSBreached() {
 
 void txEvent(TimerInformation *Sender) {
     if (thresholdRMSBreached()) {
-        digitalWrite(statusLEDPin, HIGH);
+        digitalWrite(txEnablePin, HIGH);
         vw_wait_tx(); // Wait for previous tx (not likely)
         vw_send(&nodeID, sizeof(nodeID));
     } else {
-        digitalWrite(statusLEDPin, LOW);
+        digitalWrite(txEnablePin, LOW);
     }
 }
 
@@ -130,11 +132,10 @@ void printStatusEvent(TimerInformation *Sender) {
     Serial.print(minutes); Serial.print(":");
     Serial.print(seconds);
     Serial.print(" \tNode ID: "); Serial.print(nodeID);
-    Serial.print("  Samples:");
-    for (char index = 0; index < SAMPLESPERWAVE; index++) {
-        Serial.print(sampleBuf[index]); Serial.print("\t");
-    }
-    Serial.print("  RMS: "); Serial.print(sampleRMS);
+    Serial.print("  threshold: "); Serial.print(threshold);
+    Serial.print("  SampleHigh: "); Serial.print(sampleHigh);
+    Serial.print("  SampleLow: "); Serial.print(sampleLow);
+    Serial.print("  SampleRange: "); Serial.print(sampleRange);
     Serial.println("");
 }
 
@@ -148,7 +149,7 @@ void setup() {
     // debugging info
     Serial.begin(serialBaud);
     Serial.println("setup()");
-    Serial.print("  txDataPin: "); Serial.print(txDataPin);
+    Serial.print("txDataPin: "); Serial.print(txDataPin);
     pinMode(txDataPin, OUTPUT);
     vw_set_tx_pin(txDataPin);
     Serial.print("  txEnablePin: "); Serial.print(txEnablePin);
@@ -159,12 +160,13 @@ void setup() {
     digitalWrite(statusLEDPin, LOW);
     Serial.print("  currentSensePin: "); Serial.print(currentSensePin);
     pinMode(currentSensePin, INPUT);
-    Serial.print("serialBaud: "); Serial.print(serialBaud);
     Serial.print("  txBaud-"); Serial.print(txBaud);
     vw_setup(txBaud);
-    Serial.print("\nSmp. Per. Intvl: "); Serial.print(SAMPLESPERWAVE);
+    Serial.print("\n");
+    Serial.print("Threshold Limit: "); Serial.print(THRESHOLDLIMIT);
+    Serial.print("  Smp. Per. Intvl: "); Serial.print(SAMPLESPERWAVE);
     Serial.print("  Smp. Duration: "); Serial.print(MICROSPERSAMPLE);
-    Serial.print("us  analogReadMicroseconds: ");
+    Serial.print("us  analogRead: ");
     
     // Capture the start time in microseconds
     startTime = (millis() * 1000) + micros();
