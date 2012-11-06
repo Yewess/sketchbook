@@ -137,6 +137,9 @@ void printStatusEvent(TimerInformation *Sender) {
     Serial.print("  SampleLow: "); Serial.print(sampleLow);
     Serial.print("  SampleRange: "); Serial.print(sampleRange);
     Serial.println("");
+    // for debugging receiver
+    nodeID++; // for debugging receiver
+    // for debugging receiver
 }
 
 /* Main Program */

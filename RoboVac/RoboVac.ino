@@ -81,7 +81,7 @@ void printStatusEvent(TimerInformation *Sender) {
     Serial.print(hours); Serial.print(":");
     Serial.print(minutes); Serial.print(":");
     Serial.print(seconds);
-    Serial.print("Last NodeID Received: "); Serial.print(nodeID);
+    Serial.print(" \tLast NodeID Received: "); Serial.print(nodeID);
     Serial.print("  Good Messages: "); Serial.print(goodMessageCount);
     Serial.print("  Bad Messages: "); Serial.print(badMessageCount);
     Serial.println("");
