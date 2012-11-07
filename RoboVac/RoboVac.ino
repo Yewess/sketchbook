@@ -38,11 +38,14 @@ const int rxDataPin = 8;
 /* comm. constants */
 const unsigned int statusInterval = 5003; //milliseconds
 const unsigned int pollInterval = 25; // milliseconds
+const unsigned int thresholdInterval = 101; // milliseconds
 const unsigned int serialBaud = 9600;
 const unsigned int rxBaud = 300;
+const unsigned int threshold = 10000; // 10 second reception threshold
 
 /* Global Variables */
-uint8_t nodeID = 0;
+char nodeID[VW_MAX_PAYLOAD] = "";
+unsigned long lastReception = 0; // millis() a message was last received
 int goodMessageCount = 0;
 int badMessageCount = 0;
 
@@ -50,12 +53,11 @@ int badMessageCount = 0;
 
 void pollRxEvent(TimerInformation *Sender) {
     boolean CRCGood = false;
-    uint8_t nodeIDBuff = 0;
-    uint8_t nodeIDLen = 1;
+    char nodeIDBuff[VW_MAX_PAYLOAD] = "";
 
     if (vw_have_message()) {
         digitalWrite(statusLEDPin, HIGH);
-        CRCGood = vw_get_message(&nodeIDBuff, &nodeIDLen);
+        CRCGood = vw_get_message((uint8_t *) nodeIDBuff, VW_MAX_PAYLOAD);
         if (CRCGood) {
             goodMessageCount++;
             nodeID = nodeIDBuff;
@@ -64,6 +66,14 @@ void pollRxEvent(TimerInformation *Sender) {
         }
     } else {
         digitalWrite(statusLEDPin, LOW);
+    }
+}
+
+void checkThresholdEvent(TimerInformation *Sender) {
+    unsigned int currentTime = millis();
+
+    if (currentTime - lastReception > threshold) {
+        nodeID = "";
     }
 }
 
@@ -114,6 +124,7 @@ void setup() {
     // Setup events
     TimedEvent.addTimer(statusInterval, printStatusEvent);
     TimedEvent.addTimer(pollInterval, pollRxEvent);
+    TimedEvent.addTimer(thresholdInterval, checkThresholdEvent);
     // Signal completion
     Serial.println("ms"); Serial.println("loop()");
 }
