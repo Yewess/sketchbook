@@ -31,8 +31,8 @@
 
 /* Definitions */
 #define DEBUG
-#define DATABUFLEN (14) // words
 #define TXEVENTID 1 //id number of tx timer
+#define NODEID 0x42
 
 /* Measurement Constants */
 
@@ -56,8 +56,7 @@ const int currentSensePin = A0;
 const int overridePin = 12;
 
 /* comm. constants */
-// VW_MAX_PAYLOAD-1 char max  "56789012345678901234567890"
-char nodeID[VW_MAX_PAYLOAD] = "56789012345678901234567890";
+const uint8_t message[VW_MAX_PAYLOAD] = {NODEID, NODEID, NODEID, NODEID, NODEID};
 const unsigned int senseInterval = 101;
 const unsigned int txInterval = 502;
 const unsigned long overrideAddition = (60000 * 3); // millis added for each press
@@ -76,6 +75,16 @@ int threshold = 0;
 unsigned long overrideTime = 0; // millis when manual override expires
 
 /* Functions */
+
+#ifdef DEBUG
+void printMessage(const uint8_t *message, uint8_t messageLen) {
+    Serial.print("Message: ");
+    for (char index=0; index < messageLen; index++) {
+        Serial.print(message[index], DEC); Serial.print(" ");
+    }
+    Serial.println();
+}
+#endif // DEBUG
 
 void updateCurrentEvent(TimerInformation *Sender) {
     char index=0;
@@ -139,7 +148,7 @@ void txEvent(TimerInformation *Sender) {
     if (thresholdBreached()) {
         digitalWrite(txEnablePin, HIGH);
         vw_wait_tx(); // Wait for previous tx (not likely)
-        vw_send((uint8_t *) nodeID, VW_MAX_PAYLOAD);
+        vw_send(message, VW_MAX_PAYLOAD);
     } else {
         digitalWrite(txEnablePin, LOW);
     }
@@ -184,6 +193,9 @@ void setup() {
     double stopTime = 0;
     double duration = 0;
   
+#ifdef DEBUG
+    Serial.begin(serialBaud);
+#endif // DEBUG
     pinMode(txDataPin, OUTPUT);
     vw_set_tx_pin(txDataPin);
     pinMode(txEnablePin, OUTPUT);
@@ -228,8 +240,7 @@ void setup() {
 
 #ifdef DEBUG
     TimedEvent.addTimer(statusInterval, printStatusEvent);
-    Serial.begin(serialBaud);
-    Serial.print("setup()"); Serial.print(" Node ID: "); Serial.println(nodeID);
+    Serial.print("setup()"); Serial.print(" Node ID: "); Serial.println(message[0], DEC);
     Serial.print("txDataPin: "); Serial.print(txDataPin);
     Serial.print("  txEnablePin: "); Serial.print(txEnablePin);
     Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
@@ -243,6 +254,7 @@ void setup() {
     Serial.print("us  analogRead: ");
     Serial.print(analogReadMicroseconds);
     Serial.println("us");
+    printMessage(message, VW_MAX_PAYLOAD);
 #endif // DEBUG
 }
 
