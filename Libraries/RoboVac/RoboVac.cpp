@@ -19,34 +19,7 @@
 */
 
 #include <Arduino.h>
-#include <RoboVac.h>
-
-struct message_s {
-    word magic; // constant 0x42
-    byte version; // protocol version
-    byte node_id; // node ID
-    word up_days; // number of days running
-    byte up_hours; // number of hours running
-    byte up_minutes; // number of minutes running
-    byte up_seconds; // number of seconds running
-    word up_millis; // number of miliseconds running
-};
-
-const word message_size = sizeof(message_t);
-
-void printMessage(const message_t *message) {
-    Serial.print("Message:");
-    Serial.print(" Magic: 0x"); Serial.print(message->magic, HEX);
-    Serial.print(" Version: "); Serial.print(message->version);
-    Serial.print(" node ID: "); Serial.print(message->node_id);
-    Serial.print(" Uptime: ");
-    Serial.print(message->up_days); Serial.print("d");
-    Serial.print(message->up_hours); Serial.print("h");
-    Serial.print(message->up_minutes); Serial.print("m");
-    Serial.print(message->up_seconds); Serial.print("s");
-    Serial.print(message->up_millis); Serial.print("ms");
-    Serial.println();
-}
+#include "RoboVac.h"
 
 void makeMessage(message_t *message, byte nodeID) {
     unsigned long currentTime = millis();
@@ -62,11 +35,11 @@ void makeMessage(message_t *message, byte nodeID) {
     message->magic = MESSAGEMAGIC;
     message->version = MESSAGEVERSION;
     message->node_id = nodeID;
-    message->up_millis = word(millisec);
-    message->up_seconds = byte(seconds);
-    message->up_minutes = byte(minutes);
-    message->up_hours = byte(seconds);
-    message->up_days = byte(days);
+    message->up_millis = millisec;
+    message->up_seconds = seconds;
+    message->up_minutes = minutes;
+    message->up_hours = seconds;
+    message->up_days = days;
 }
 
 void copyMessage(message_t *destination, const message_t *source) {

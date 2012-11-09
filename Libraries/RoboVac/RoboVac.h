@@ -26,10 +26,32 @@
 #define MESSAGEMAGIC 0x9876
 #define MESSAGEVERSION 0x01
 #define MESSAGESIZE sizeof(message_t)
+#define TXINTERVAL 1002 // Miliseconds between transmits
+#define RXTXBAUD 300 // Rf Baud
+#define SERIALBAUD 9600
 
-typedef struct message_s message_t;
+typedef struct message_s {
+    word magic; // constant 0x42
+    byte version; // protocol version
+    byte node_id; // node ID
+    word up_days; // number of days running
+    byte up_hours; // number of hours running
+    byte up_minutes; // number of minutes running
+    byte up_seconds; // number of seconds running
+    word up_millis; // number of miliseconds running
+} message_t;
 
-void printMessage(const message_t *message);
+typedef enum vacstate_e {
+    VAC_LISTENING; // Waiting for Signal
+    VAC_CONFIRMING; // Waiting for good/bad ratio
+    VAC_VACPOWERUP; // Powering up vacuum
+    VAC_SERVOPOWERUP; // Powering up servos
+    VAC_SERVOACTION; // Moving Servos
+    VAC_SERVOPOWERDN; // Powering down servos
+    VAC_VACUUMING; // Waiting for down threshold
+    VAC_VACPOWERDN; // Powering down vacuum
+    VAC_ENDSTATE; // Return to listening
+} vacstate_t;
 
 void makeMessage(message_t *message, byte nodeID);
 

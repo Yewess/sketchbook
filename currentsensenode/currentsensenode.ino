@@ -26,7 +26,7 @@
 
 #include <TimedEvent.h>
 #include <VirtualWire.h>
-#include <RoboVac.h>
+#include "RoboVac.h"
 
 /* Externals */
 
@@ -36,11 +36,8 @@
 
 // Constants used once (to save space)
 #define SENSEINTERVAL 101
-#define TXINTERVAL 5002
 #define STATUSINTERVAL 6003
 #define OVERRIDEAMOUNT (60000 * 3)
-#define SERIALBAUD 9600
-#define TXBAUD 300
 
 // AC Frequency
 #define ACHERTZ (60)
@@ -64,7 +61,7 @@ const int currentSensePin = A0;
 const int overridePin = 12;
 
 /* Global Variables */
-struct message_t message;
+message_t message;
 unsigned long analogReadMicroseconds = 0; // measured in setup()
 int sampleLow = 0;
 int sampleHigh = 0;
@@ -191,7 +188,7 @@ void setup() {
     digitalWrite(statusLEDPin, LOW);
     pinMode(currentSensePin, INPUT);
     pinMode(overridePin, INPUT);
-    vw_setup(TXBAUD);
+    vw_setup(RXTXBAUD);
     // Capture the start time in microseconds
     startTime = (millis() * 1000) + micros();
     for (int counter = 0; counter < 10000; counter++) { // 10,000 analog reads for average (below)
@@ -233,7 +230,7 @@ void setup() {
     Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
     Serial.print("  currentSensePin: "); Serial.print(currentSensePin);
     Serial.print("  overridePin: "); Serial.print(overridePin);
-    Serial.print("  TXBAUD: "); Serial.print(TXBAUD);
+    Serial.print("  RXTXBAUD: "); Serial.print(RXTXBAUD);
     Serial.println();
     Serial.print("Threshold Limit: "); Serial.print(THRESHOLDLIMIT);
     Serial.print("  Smp. Per. Intvl: "); Serial.print(SAMPLESPERWAVE);
