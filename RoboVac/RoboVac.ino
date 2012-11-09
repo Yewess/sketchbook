@@ -1,6 +1,6 @@
 /*
   Vacuum power and hose selection controller
-  
+
     Copyright (C) 2012 Chris Evich <chris-arduino@anonomail.me>
 
     This program is free software; you can redistribute it and/or modify
@@ -28,56 +28,35 @@
 
 #include <TimedEvent.h>
 #include <VirtualWire.h>
+#include <RoboVac.h>
 
 /* Externals */
 
 /* Definitions */
 #define DEBUG
 
+// Constants used once (to save space)
+#define POLLINTERVAL 25
+#define THRESHOLDINTERVAL 101
+#define STATUSINTERVAL 5003
+#define THRESHOLD 10000 // 10 second reception threshold
+#define SERIALBAUD 9600
+#define RXBAUD 300
+
+/* Types */
+
 /* I/O constants */
 const int statusLEDPin = 13;
 const int rxDataPin = 8;
 
-/* comm. constants */
-const unsigned int statusInterval = 5003; //milliseconds
-const unsigned int pollInterval = 25; // milliseconds
-const unsigned int thresholdInterval = 101; // milliseconds
-#ifdef DEBUG
-const unsigned int serialBaud = 9600;
-#endif // DEBUG
-const unsigned int rxBaud = 300;
-const unsigned int threshold = 10000; // 10 second reception threshold
-
 /* Global Variables */
-uint8_t message[VW_MAX_PAYLOAD] = {0};
+message_t message;
+boolean blankMessage = true; // Signal not to read from message
 unsigned long lastReception = 0; // millis() a message was last received
 int goodMessageCount = 0;
 int badMessageCount = 0;
-boolean blankMessage = true;
 
 /* Functions */
-
-#ifdef DEBUG
-void printMessage(const uint8_t *message, uint8_t messageLen) {
-    Serial.print("Message: ");
-    for (char index=0; index < messageLen; index++) {
-        Serial.print(message[index], DEC); Serial.print(" ");
-    }
-    Serial.println();
-}
-#endif // DEBUG
-
-void copyMessage(uint8_t *destination, uint8_t *source, uint8_t messageLen) {
-    for (char index=0; index < messageLen; index++) {
-       destination[index] = source[index];
-    }  
-}
-
-void clearMessage(uint8_t *message, uint8_t messageLen) {
-    uint8_t blankMessage[VW_MAX_PAYLOAD] = {0};
-    
-    copyMessage(message, blankMessage, VW_MAX_PAYLOAD);
-}
 
 void pollRxEvent(TimerInformation *Sender) {
     boolean CRCGood = false;
@@ -88,11 +67,13 @@ void pollRxEvent(TimerInformation *Sender) {
         digitalWrite(statusLEDPin, HIGH);
         CRCGood = vw_get_message(messageBuff, &buffLen);
 #ifdef DEBUG
-        printMessage(messageBuff, buffLen);
+        if (buffLen == MESSAGESIZE) {
+            printMessage((message_t *) messageBuff);
+        }
 #endif // DEBUG
-        if (CRCGood == true) {
+        if (CRCGood == true && validMessage((message_t *) messageBuff)) {
             goodMessageCount++;
-            copyMessage(message, messageBuff, buffLen);
+            copyMessage(message, (message_t *) messageBuff);
             blankMessage = false;
         } else {
             badMessageCount++;
@@ -105,15 +86,13 @@ void pollRxEvent(TimerInformation *Sender) {
 void checkThresholdEvent(TimerInformation *Sender) {
     unsigned int currentTime = millis();
 
-    if (currentTime - lastReception > threshold) {
+    if (currentTime - lastReception > THRESHOLD) {
         if (!blankMessage) {
-            clearMessage(message, VW_MAX_PAYLOAD);
             blankMessage = true;
         }
     }
 }
 
-#ifdef DEBUG
 void printStatusEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
     int seconds = (currentTime / 1000);
@@ -128,47 +107,49 @@ void printStatusEvent(TimerInformation *Sender) {
     Serial.print(hours); Serial.print(":");
     Serial.print(minutes); Serial.print(":");
     Serial.print(seconds);
-    Serial.print(" \tLast NodeID Received: "); Serial.print(message[0], DEC);
+    if (blankMessage) {
+        Serial.print(" \tLast NodeID Received: "); Serial.print("?");
+    } else {
+        Serial.print(" \tLast NodeID Received: "); Serial.print(message.node_id, DEC);
+    }
     Serial.print("  Good Messages: "); Serial.print(goodMessageCount);
     Serial.print("  Bad Messages: "); Serial.print(badMessageCount);
     Serial.println("");
 
     goodMessageCount = 0;
     badMessageCount = 0;
-    clearMessage(message, VW_MAX_PAYLOAD);
 }
-#endif // DEBUG
 
 /* Main Program */
 
 void setup() {
-    
+
     // debugging info
-#ifdef DEBUG    
-    Serial.begin(serialBaud);
-#endif // DEBUG    
+#ifdef DEBUG
+    Serial.begin(SERIALBAUD);
+#endif // DEBUG
 
     pinMode(rxDataPin, INPUT);
     vw_set_rx_pin(rxDataPin);
     vw_set_ptt_pin(statusLEDPin);
     pinMode(statusLEDPin, OUTPUT);
     digitalWrite(statusLEDPin, LOW);
-    vw_setup(rxBaud);
+    vw_setup(RXBAUD);
     vw_rx_start();
 
     // Setup events
-    TimedEvent.addTimer(pollInterval, pollRxEvent);
-    TimedEvent.addTimer(thresholdInterval, checkThresholdEvent);
+    TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
+    TimedEvent.addTimer(THRESHOLDINTERVAL, checkThresholdEvent);
 
 #ifdef DEBUG
-    TimedEvent.addTimer(statusInterval, printStatusEvent);
+    TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
     Serial.println("setup()");
     Serial.print("  rxDataPin: "); Serial.print(rxDataPin);
     Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
-    Serial.print("  serialBaud: "); Serial.print(serialBaud);
-    Serial.print("  rxBaud: "); Serial.print(rxBaud);
-    Serial.print("\nStat. Int.: "); Serial.print(statusInterval);
-    Serial.print("ms  Poll Int.: "); Serial.print(pollInterval);
+    Serial.print("  SERIALBAUD: "); Serial.print(SERIALBAUD);
+    Serial.print("  RXBAUD: "); Serial.print(RXBAUD);
+    Serial.print("\nStat. Int.: "); Serial.print(STATUSINTERVAL);
+    Serial.print("ms  Poll Int.: "); Serial.print(POLLINTERVAL);
     Serial.println("ms"); Serial.println("loop()");
 #endif // DEBUG
 }

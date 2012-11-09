@@ -1,6 +1,6 @@
 /*
   Analog current sensing and encapsulation w/in message packet
-  
+
     Copyright (C) 2012 Chris Evich <chris-arduino@anonomail.me>
 
     This program is free software; you can redistribute it and/or modify
@@ -26,26 +26,34 @@
 
 #include <TimedEvent.h>
 #include <VirtualWire.h>
+#include <RoboVac.h>
 
 /* Externals */
 
 /* Definitions */
 #define DEBUG
-#define TXEVENTID 1 //id number of tx timer
-#define NODEID 0x42
+#define NODEID 0x01
 
-/* Measurement Constants */
+// Constants used once (to save space)
+#define SENSEINTERVAL 101
+#define TXINTERVAL 5002
+#define STATUSINTERVAL 6003
+#define OVERRIDEAMOUNT (60000 * 3)
+#define SERIALBAUD 9600
+#define TXBAUD 300
 
 // AC Frequency
 #define ACHERTZ (60)
 // Number of measurements to capture per wavelength
 #define SAMPLESPERWAVE (20)
 // Wavelength in microseconds
-#define ACWAVELENGTH (1000000.0/float(ACHERTZ))
+#define ACWAVELENGTH (1000000.0/(ACHERTZ))
 // Number of microseconds per sample (MUST be larger than AnalogRead)
-#define MICROSPERSAMPLE (float(ACWAVELENGTH) / float(SAMPLESPERWAVE))
+#define MICROSPERSAMPLE ((ACWAVELENGTH) / (SAMPLESPERWAVE))
 // Threshold Sensitivity
 #define THRESHOLDLIMIT (127)
+
+/* Types */
 
 /* I/O constants */
 const int thresholdPin = A1;
@@ -55,18 +63,8 @@ const int txDataPin = 8;
 const int currentSensePin = A0;
 const int overridePin = 12;
 
-/* comm. constants */
-const uint8_t message[VW_MAX_PAYLOAD] = {NODEID, NODEID, NODEID, NODEID, NODEID};
-const unsigned int senseInterval = 101;
-const unsigned int txInterval = 502;
-const unsigned long overrideAddition = (60000 * 3); // millis added for each press
-const unsigned int txBaud = 300;
-#ifdef DEBUG
-const unsigned int statusInterval = 5003;
-const unsigned int serialBaud = 9600;
-#endif // DEBUG
-
 /* Global Variables */
+struct message_t message;
 unsigned long analogReadMicroseconds = 0; // measured in setup()
 int sampleLow = 0;
 int sampleHigh = 0;
@@ -75,16 +73,6 @@ int threshold = 0;
 unsigned long overrideTime = 0; // millis when manual override expires
 
 /* Functions */
-
-#ifdef DEBUG
-void printMessage(const uint8_t *message, uint8_t messageLen) {
-    Serial.print("Message: ");
-    for (char index=0; index < messageLen; index++) {
-        Serial.print(message[index], DEC); Serial.print(" ");
-    }
-    Serial.println();
-}
-#endif // DEBUG
 
 void updateCurrentEvent(TimerInformation *Sender) {
     char index=0;
@@ -109,7 +97,7 @@ void updateCurrentEvent(TimerInformation *Sender) {
         // wait difference between MICROSPERSAMPLE and analogReadMicroseconds
         delayMicroseconds(MICROSPERSAMPLE - analogReadMicroseconds);
     }
-    sampleRange = sampleHigh - sampleLow;  
+    sampleRange = sampleHigh - sampleLow;
 }
 
 boolean thresholdBreached() {
@@ -128,18 +116,18 @@ boolean thresholdBreached() {
 
 void incOverrideTime(void) {
     unsigned long currentTime = millis();
-    // FIXME: This will break if currentMillies wraps during override    
+    // FIXME: This will break if currentMillies wraps during override
     if (overrideTime > currentTime) {
         // Still override time in timer
-        overrideTime += (overrideAddition);
-#ifdef DEBUG        
-        Serial.print("Override +: ");Serial.println(overrideAddition);
-#endif // DEBUG        
+        overrideTime += (OVERRIDEAMOUNT);
+#ifdef DEBUG
+        Serial.print("Override +: ");Serial.println(OVERRIDEAMOUNT);
+#endif // DEBUG
     } else if (overrideTime < currentTime) { // less than currentMillis
         // First press
-        overrideTime = currentTime + (overrideAddition);
+        overrideTime = currentTime + (OVERRIDEAMOUNT);
 #ifdef DEBUG
-        Serial.print("Override by: ");Serial.println(overrideAddition);
+        Serial.print("Override by: ");Serial.println(OVERRIDEAMOUNT);
 #endif // DEBUG
     }
 }
@@ -147,22 +135,22 @@ void incOverrideTime(void) {
 void txEvent(TimerInformation *Sender) {
     if (thresholdBreached()) {
         digitalWrite(txEnablePin, HIGH);
-        vw_wait_tx(); // Wait for previous tx (not likely)
-        vw_send(message, VW_MAX_PAYLOAD);
+        makeMessage(&message, NODEID);
+        vw_send((uint8_t *) &message, MESSAGESIZE);
     } else {
         digitalWrite(txEnablePin, LOW);
     }
-    
+
     // Check override button during slow event
     if (digitalRead(overridePin) == HIGH) {
         incOverrideTime();
     }
 }
 
-#ifdef DEBUG
 void printStatusEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
     int seconds = (currentTime / 1000);
+    int millisec = currentTime % 1000;
     int minutes = seconds / 60;
     seconds = seconds % 60;
     int hours = minutes / 60;
@@ -184,7 +172,6 @@ void printStatusEvent(TimerInformation *Sender) {
     }
     Serial.println("");
 }
-#endif // DEBUG
 
 /* Main Program */
 
@@ -192,9 +179,9 @@ void setup() {
     double startTime = 0;
     double stopTime = 0;
     double duration = 0;
-  
+
 #ifdef DEBUG
-    Serial.begin(serialBaud);
+    Serial.begin(SERIALBAUD);
 #endif // DEBUG
     pinMode(txDataPin, OUTPUT);
     vw_set_tx_pin(txDataPin);
@@ -204,7 +191,7 @@ void setup() {
     digitalWrite(statusLEDPin, LOW);
     pinMode(currentSensePin, INPUT);
     pinMode(overridePin, INPUT);
-    vw_setup(txBaud);
+    vw_setup(TXBAUD);
     // Capture the start time in microseconds
     startTime = (millis() * 1000) + micros();
     for (int counter = 0; counter < 10000; counter++) { // 10,000 analog reads for average (below)
@@ -214,7 +201,7 @@ void setup() {
     // Calculate duration in microseconds
     duration = stopTime - startTime;
     // divide the duration by number of reads
-    analogReadMicroseconds = duration / 10000.0;    
+    analogReadMicroseconds = duration / 10000.0;
 
     // Check Assumptions
     if (analogReadMicroseconds > MICROSPERSAMPLE) {
@@ -235,18 +222,18 @@ void setup() {
     }
 
     // Setup events
-    TimedEvent.addTimer(senseInterval, updateCurrentEvent);
-    TimedEvent.addTimer(txInterval, txEvent);
+    TimedEvent.addTimer(SENSEINTERVAL, updateCurrentEvent);
+    TimedEvent.addTimer(TXINTERVAL, txEvent);
 
 #ifdef DEBUG
-    TimedEvent.addTimer(statusInterval, printStatusEvent);
-    Serial.print("setup()"); Serial.print(" Node ID: "); Serial.println(message[0], DEC);
+    TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
+    Serial.print("setup()"); Serial.print(" Node ID: "); Serial.println(NODEID, DEC);
     Serial.print("txDataPin: "); Serial.print(txDataPin);
     Serial.print("  txEnablePin: "); Serial.print(txEnablePin);
     Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
     Serial.print("  currentSensePin: "); Serial.print(currentSensePin);
     Serial.print("  overridePin: "); Serial.print(overridePin);
-    Serial.print("  txBaud: "); Serial.print(txBaud);
+    Serial.print("  TXBAUD: "); Serial.print(TXBAUD);
     Serial.println();
     Serial.print("Threshold Limit: "); Serial.print(THRESHOLDLIMIT);
     Serial.print("  Smp. Per. Intvl: "); Serial.print(SAMPLESPERWAVE);
@@ -254,7 +241,6 @@ void setup() {
     Serial.print("us  analogRead: ");
     Serial.print(analogReadMicroseconds);
     Serial.println("us");
-    printMessage(message, VW_MAX_PAYLOAD);
 #endif // DEBUG
 }
 
