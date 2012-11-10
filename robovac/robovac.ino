@@ -60,7 +60,7 @@ unsigned long lastReception = 0; // millis() a message was last received
 unsigned long lastStateChange = 0; // last time state was changed
 int goodMessageCount = 0;
 int badMessageCount = 0;
-vacstate_t actionState = VAC_ENDSTATE; // Current system state
+int actionState = VAC_ENDSTATE; // Current system state
 #ifdef DEBUG
 const char *statusMessage;
 #endif // DEBUG
@@ -68,7 +68,7 @@ const char *statusMessage;
 /* Functions */
 
 void servoControl(boolean turnOn) {
-    if (turnON == true) {
+    if (turnOn == true) {
         digitalWrite(servoPowerControlPin, HIGH);
     } else {
         digitalWrite(servoPowerControlPin, LOW);
@@ -76,7 +76,7 @@ void servoControl(boolean turnOn) {
 }
 
 void vacControl(boolean turnOn) {
-    if (turnON == true) {
+    if (turnOn == true) {
         digitalWrite(vacPowerControlPin, HIGH);
     } else {
         digitalWrite(servoPowerControlPin, LOW);
@@ -133,9 +133,10 @@ void handleMessageFault(void) {
     // STUB
 }
 
-void handleActionState(void)
+void handleActionState(void) {
     unsigned long currentTime = millis();
-    vacstate_t newState = actionState;
+    int newState = actionState;
+    int ratio = 0;
 
     switch (actionState) {
 
@@ -146,14 +147,13 @@ void handleActionState(void)
             break;
 
         case VAC_CONFIRMING:
-            int ratio = goodMessageCount / badMessageCount;
-
+            ratio = goodMessageCount / badMessageCount;
             if (ratio >= GOODBADRATIO) {
                 updateState("VAC_SERVOPOWERUP");
             } else {
                 if (currentTime > (lastStateChange + TIMEOUT)) {
                     actionState = VAC_ENDSTATE;
-                    updateStatus("VAC_LISTENING")
+                    updateState("VAC_LISTENING");
                 }
             }
             break;
@@ -161,28 +161,28 @@ void handleActionState(void)
         case VAC_VACPOWERUP:
             digitalWrite(vacPowerControlPin, HIGH);
             if (currentTime > (lastStateChange + VACPOWERTIME)) {
-                updateStatus("VAC_SERVOPOWERUP");
+                updateState("VAC_SERVOPOWERUP");
             }
             break;
 
         case VAC_SERVOPOWERUP:
             digitalWrite(servoPowerControlPin, HIGH);
             if (currentTime > (lastStateChange + SERVOPOWERTIME)) {
-                updateStatus("VAC_SERVOACTION");
+                updateState("VAC_SERVOACTION");
             }
             break;
 
         case VAC_SERVOACTION:
-            moveServos(message->node_id);
+            moveServos(message.node_id);
             if (currentTime > (lastStateChange + SERVOMOVETIME)) {
-                updateStatus("VAC_SERVOPOWERDN");
+                updateState("VAC_SERVOPOWERDN");
             }
             break;
 
         case VAC_SERVOPOWERDN:
             digitalWrite(servoPowerControlPin, LOW);
             if (currentTime > (lastStateChange + SERVOPOWERTIME)) {
-                updateStatus("VAC_VACUUMING");
+                updateState("VAC_VACUUMING");
             }
             break;
 
@@ -190,7 +190,7 @@ void handleActionState(void)
             // Sign of blank messages > threshold  or ID change
             if ( (blankMessage == true) && (goodMessageCount == 0) &&
                                              (badMessageCount == 0) ) {
-                updateStatus("VAC_VACPOWERDN");
+                updateState("VAC_VACPOWERDN");
             }
             break;
 
@@ -198,14 +198,14 @@ void handleActionState(void)
             digitalWrite(vacPowerControlPin, LOW);
             moveServos(0); // Opens all doors
             if (currentTime > (lastStateChange + VACPOWERTIME)) {
-                updateStatus("VAC_ENDSTATE");
+                updateState("VAC_ENDSTATE");
             }
             break;
 
         case VAC_ENDSTATE:
-        case default:
+        default:
             actionState = VAC_ENDSTATE;
-            statusMessage("VAC_LISTENING");
+            updateState("VAC_LISTENING");
             break;
     }
 }
@@ -215,24 +215,25 @@ void pollRxEvent(TimerInformation *Sender) {
     boolean CRCGood = false;
     uint8_t buffLen = VW_MAX_PAYLOAD;
     uint8_t messageBuff[VW_MAX_PAYLOAD] = {0};
-
+    message_t *_messageBuff = (message_t *) messageBuff;
+    
     if (vw_have_message()) {
         digitalWrite(statusLEDPin, HIGH);
         CRCGood = vw_get_message(messageBuff, &buffLen);
 #ifdef DEBUG
         if (buffLen == MESSAGESIZE) {
-            printMessage((message_t *) messageBuff);
+            printMessage(_messageBuff);
         }
 #endif // DEBUG
-        if (CRCGood == true && validMessage((message_t *) messageBuff)) {
+        if ((CRCGood == true) && validMessage(_messageBuff)) {
             // Start counting after second good message
-            if ( ((message_t *) messageBuff)->node_id == message->node_id ) {
+            if ( _messageBuff->node_id == message.node_id ) {
                 goodMessageCount++;
             } else if (blankMessage == false) {
                 // mid-stream node_id change
                 handleMessageFault;
             } else {
-                copyMessage(&message, (message_t *) messageBuff);
+                copyMessage(&message, _messageBuff);
                 blankMessage = false;
                 handleActionState();
             }
@@ -273,7 +274,7 @@ void printStatusEvent(TimerInformation *Sender) {
     Serial.print("  Good: "); Serial.print(goodMessageCount);
     Serial.print("  Bad: "); Serial.print(badMessageCount);
     if (!blankMessage) {
-        printMessage(message)
+        printMessage(&message);
     }
     Serial.println("");
 }

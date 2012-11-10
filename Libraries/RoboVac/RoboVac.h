@@ -42,15 +42,15 @@ typedef struct message_s {
 } message_t;
 
 typedef enum vacstate_e {
-    VAC_LISTENING; // Waiting for Signal
-    VAC_CONFIRMING; // Waiting for good/bad ratio
-    VAC_VACPOWERUP; // Powering up vacuum
-    VAC_SERVOPOWERUP; // Powering up servos
-    VAC_SERVOACTION; // Moving Servos
-    VAC_SERVOPOWERDN; // Powering down servos
-    VAC_VACUUMING; // Waiting for down threshold
-    VAC_VACPOWERDN; // Powering down vacuum
-    VAC_ENDSTATE; // Return to listening
+    VAC_LISTENING, // Waiting for Signal
+    VAC_CONFIRMING, // Waiting for good/bad ratio
+    VAC_VACPOWERUP, // Powering up vacuum
+    VAC_SERVOPOWERUP, // Powering up servos
+    VAC_SERVOACTION, // Moving Servos
+    VAC_SERVOPOWERDN, // Powering down servos
+    VAC_VACUUMING, // Waiting for down threshold
+    VAC_VACPOWERDN, // Powering down vacuum
+    VAC_ENDSTATE, // Return to listening
 } vacstate_t;
 
 void makeMessage(message_t *message, byte nodeID);
