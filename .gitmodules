@@ -1,0 +1,6 @@
+[submodule "Libraries/Adafruit-RGB-LCD-Shield-Library"]
+	path = Libraries/Adafruit-RGB-LCD-Shield-Library
+	url = git://github.com/adafruit/Adafruit-RGB-LCD-Shield-Library.git
+[submodule "Libraries/Adafruit-PWM-Servo-Driver-Library"]
+	path = Libraries/Adafruit-PWM-Servo-Driver-Library
+	url = git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
