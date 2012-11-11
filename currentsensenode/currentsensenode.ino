@@ -26,18 +26,17 @@
 
 #include <TimedEvent.h>
 #include <VirtualWire.h>
-#include "RoboVac.h"
+#include <RoboVac.h>
 
 /* Externals */
 
 /* Definitions */
 #define DEBUG
-#define NODEID 0x01
 
 // Constants used once (to save space)
-#define SENSEINTERVAL 101
+#define SENSEINTERVAL 11
 #define STATUSINTERVAL 6003
-#define OVERRIDEAMOUNT (60000 * 3)
+#define OVERRIDEAMOUNT (20000)
 
 // AC Frequency
 #define ACHERTZ (60)
@@ -55,10 +54,12 @@
 /* I/O constants */
 const int thresholdPin = A1;
 const int statusLEDPin = 13;
-const int txEnablePin = 7;
-const int txDataPin = 8;
+const int txEnablePin1 = 7;
+const int txEnablePin2 = 8;
+const int txDataPin = 9;
 const int currentSensePin = A0;
 const int overridePin = 12;
+const int switchNodePin = 6;
 
 /* Global Variables */
 message_t message;
@@ -68,6 +69,7 @@ int sampleHigh = 0;
 int sampleRange = 0;
 int threshold = 0;
 unsigned long overrideTime = 0; // millis when manual override expires
+int txEnablePin = 7;
 
 /* Functions */
 
@@ -80,7 +82,7 @@ void updateCurrentEvent(TimerInformation *Sender) {
     sampleLow = 0;
     sampleRange = 0;
 
-    threshold = map( analogRead(thresholdPin), 0, 1023, 0, THRESHOLDLIMIT);
+    threshold = map( analogRead(thresholdPin), 0, 1023, 5, THRESHOLDLIMIT);
     // Fill data elements
     for (index=0; index< SAMPLESPERWAVE; index++) {
         sample= map( analogRead(currentSensePin),
@@ -132,15 +134,26 @@ void incOverrideTime(void) {
 void txEvent(TimerInformation *Sender) {
     if (thresholdBreached()) {
         digitalWrite(txEnablePin, HIGH);
-        makeMessage(&message, NODEID);
+        makeMessage(&message, byte(txEnablePin));
         vw_send((uint8_t *) &message, MESSAGESIZE);
     } else {
-        digitalWrite(txEnablePin, LOW);
+        digitalWrite(txEnablePin1, LOW);
+        digitalWrite(txEnablePin2, LOW);
     }
 
-    // Check override button during slow event
+    // Check override button during slower event
     if (digitalRead(overridePin) == HIGH) {
         incOverrideTime();
+    }
+    // Check for tx flip
+    if (digitalRead(switchNodePin) == HIGH) {
+        digitalWrite(txEnablePin1, LOW);
+        digitalWrite(txEnablePin2, LOW);
+        if (txEnablePin == txEnablePin1) {
+            txEnablePin = txEnablePin2;
+        } else {
+            txEnablePin = txEnablePin1;
+        }
     }
 }
 
@@ -148,7 +161,8 @@ void printStatusEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
 
     PRINTTIME(currentTime);
-    Serial.print(" \t threshold: "); Serial.print(threshold);
+    Serial.print(" \tNode ID: "); Serial.print(txEnablePin, DEC);
+    Serial.print("  threshold: "); Serial.print(threshold);
     Serial.print("  SampleHigh: "); Serial.print(sampleHigh);
     Serial.print("  SampleLow: "); Serial.print(sampleLow);
     Serial.print("  SampleRange: "); Serial.print(sampleRange);
@@ -170,7 +184,11 @@ void setup() {
 #endif // DEBUG
     pinMode(txDataPin, OUTPUT);
     vw_set_tx_pin(txDataPin);
-    pinMode(txEnablePin, OUTPUT);
+    pinMode(txEnablePin1, OUTPUT);
+    pinMode(txEnablePin2, OUTPUT);
+    digitalWrite(txEnablePin1, LOW);
+    digitalWrite(txEnablePin2, LOW);
+    pinMode(switchNodePin, INPUT);
     vw_set_ptt_pin(statusLEDPin);
     pinMode(statusLEDPin, OUTPUT);
     digitalWrite(statusLEDPin, LOW);
@@ -212,7 +230,7 @@ void setup() {
 
 #ifdef DEBUG
     TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
-    Serial.print("setup()"); Serial.print(" Node ID: "); Serial.println(NODEID, DEC);
+    Serial.println("setup()");
     Serial.print("txDataPin: "); Serial.print(txDataPin);
     Serial.print("  txEnablePin: "); Serial.print(txEnablePin);
     Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
