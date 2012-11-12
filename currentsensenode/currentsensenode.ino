@@ -146,20 +146,8 @@ void txEvent(TimerInformation *Sender) {
 
 void printStatusEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
-    int seconds = (currentTime / 1000);
-    int millisec = currentTime % 1000;
-    int minutes = seconds / 60;
-    seconds = seconds % 60;
-    int hours = minutes / 60;
-    minutes = minutes % 60;
-    int days = hours / 24;
-    hours = hours % 24;
 
-    Serial.print(days); Serial.print(":");
-    Serial.print(hours); Serial.print(":");
-    Serial.print(minutes); Serial.print(":");
-    Serial.print(seconds); Serial.print(" (");
-    Serial.print(currentTime); Serial.print(")");
+    PRINTTIME(currentTime);
     Serial.print(" \t threshold: "); Serial.print(threshold);
     Serial.print("  SampleHigh: "); Serial.print(sampleHigh);
     Serial.print("  SampleLow: "); Serial.print(sampleLow);
