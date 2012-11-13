@@ -571,7 +571,15 @@ void setup() {
     setupNodeInfo();
     // Load stored map data
     readNodeIDServoMap();
-    printNodeInfo();
+#ifdef DEBUG
+    nodeInfo[2].node_id = 7;
+    nodeInfo[2].port_id = 42;
+    strcpy(nodeInfo[2].node_name, "TEST NODE 7");
+    nodeInfo[4].node_id = 9;
+    nodeInfo[4].port_id = 44;
+    strcpy(nodeInfo[4].node_name, "TEST NODE 10");
+#endif // DEBUG
+
     // Make sure content matches
     writeNodeIDServoMap();
     printNodeInfo();

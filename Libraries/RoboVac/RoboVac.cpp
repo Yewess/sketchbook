@@ -36,6 +36,7 @@ void copyMessage(message_t *destination, const message_t *source) {
 }
 
 boolean validMessage(const message_t *message, unsigned long listen_up_time) {
+    // FIXME: This doesn't seem to work?
     if (     (message->magic == MESSAGEMAGIC) &&
              (message->version == MESSAGEVERSION) &&
              (message->node_id > 0) &&
