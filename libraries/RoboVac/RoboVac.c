@@ -19,7 +19,7 @@
 */
 
 #include <Arduino.h>
-#include "RoboVac.h"
+#include <RoboVac.h>
 
 void makeMessage(message_t *message, byte nodeID) {
     message->magic = MESSAGEMAGIC;
@@ -35,13 +35,11 @@ void copyMessage(message_t *destination, const message_t *source) {
     destination->up_time = source->up_time;
 }
 
-boolean validMessage(const message_t *message, unsigned long listen_up_time) {
-    // FIXME: This doesn't seem to work?
+boolean validMessage(const message_t *message) {
     if (     (message->magic == MESSAGEMAGIC) &&
              (message->version == MESSAGEVERSION) &&
              (message->node_id > 0) &&
-             (message->node_id < 255) &&
-             (message->up_time < listen_up_time) ) {
+             (message->node_id < 255) ) {
         return true;
     } else {
         return false;

@@ -134,6 +134,7 @@ void txEvent(TimerInformation *Sender) {
         digitalWrite(txEnablePin, HIGH);
         makeMessage(&message, NODEID);
         vw_send((uint8_t *) &message, MESSAGESIZE);
+        PRINTMESSAGE(millis(), message, 0);
     } else {
         digitalWrite(txEnablePin, LOW);
     }

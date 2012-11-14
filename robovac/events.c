@@ -22,28 +22,33 @@
 
 /* functions */
 
+void actionStateEvent(TimerInformation *Sender) {
+    handleActionState();
+}
 
 void pollRxEvent(TimerInformation *Sender) {
-    unsigned long currentTime = millis();
     boolean CRCGood = false;
     uint8_t buffLen = sizeof(message_t);
     uint8_t *messageBuff = (uint8_t *) &message;
 
     signalStrength = analogRead(signalStrengthPin);
-    signalStrength = abs(map(signalStrength, 0, 1023, 100, -100));
     if (vw_have_message()) {
         digitalWrite(statusLEDPin, HIGH);
         CRCGood = vw_get_message(messageBuff, &buffLen);
-        if ((CRCGood == false) || (validMessage(&message, currentTime) == false)
-            || (findNode(message.node_id) == NULL)) {
+        if ( (CRCGood == false) || (validMessage(&message, currentTime) == false)
+                                || (findNode(message.node_id) == NULL) ) {
                 blankMessage = true;
 #ifdef DEBUG
-                PRINTTIME(currentTime);
+                PRINTMESSAGE(millis(), message, signalStrength);
                 if (CRCGood == false) {
                     Serial.print("Bad CRC ");
                 }
-                if (validMessage(&message, currentTime) == false) {
+                if (validMessage(&message) == false) {
                     Serial.print("Invalid message ");
+                }
+                if (findNode(message.node_id) == NULL) {
+                    Serial.print("Invalid node_id ");
+                    Serial.print(message.node_id)
                 }
                 Serial.println();
 #endif // DEBUG
@@ -53,32 +58,9 @@ void pollRxEvent(TimerInformation *Sender) {
     }
 }
 
-void printMessage(unsigned long currentTime) {
-    PRINTTIME(currentTime);
-    if (blankMessage == false) {
-        Serial.print("Message:");
-        Serial.print(" Magic: 0x"); Serial.print(message.magic, HEX);
-        Serial.print(" Version: "); Serial.print(message.version);
-        Serial.print(" node ID: "); Serial.print(message.node_id);
-        Serial.print(" Uptime: ");
-        Serial.print(message.up_time); Serial.print("ms ");
-    }
-}
-
-
 void printStatusEvent(TimerInformation *Sender) {
 #ifdef DEBUG
-    unsigned long currentTime = millis();
-
-    printMessage(currentTime);
-    Serial.print("Sig. Stren: ");
-    Serial.print(int(
-        (float(signalStrength) / 1023.0)
-        * 100.0
-    ));
-    Serial.print("% ("); Serial.print(signalStrength);
-    Serial.print(")");
-    Serial.println();
+    PRINTMESSAGE(millis(), message, signalStrength);
 #endif // DEBUG
     digitalWrite(statusLEDPin, LOW);
 }

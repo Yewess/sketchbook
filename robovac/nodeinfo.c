@@ -108,9 +108,6 @@ nodeInfo_t *activeNode(unsigned long currentTime) {
 nodeInfo_t *findNode(byte node_id) {
     nodeInfo_t *result = NULL;
 
-#ifdef DEBUG
-    Serial.print("Looking for node_id "); Serial.print(node_id);
-#endif // DEBUG
     // filter out invalid IDs
     if ((node_id != 255) && (node_id != 0)) {
         for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
@@ -119,38 +116,40 @@ nodeInfo_t *findNode(byte node_id) {
             }
         }
     }
-#ifdef DEBUG
-    if (result != NULL) {
-        Serial.println(" - found it!");
-    } else {
-        Serial.println(" - not found!");
-    }
-#endif // DEBUG
     return result;
 }
 
 void setupNodeInfo(void) {
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
         nodeInfo[nodeCount].node_id = 0;
-        for (int nameChar=0; nameChar < (NODENAMEMAX); nameChar++) {
-            nodeInfo[nodeCount].node_name[nameChar] = '\0';
-        }
         nodeInfo[nodeCount].port_id = 0;
+        nodeInfo[nodeCount].servo_min = servoCenterPW;
+        nodeInfo[nodeCount].servo_max = servoCenterPW;
         nodeInfo[nodeCount].receive_count = 0;
         nodeInfo[nodeCount].new_count = 0;
         nodeInfo[nodeCount].last_heard =0;
+        for (int nameChar=0; nameChar < (NODENAMEMAX); nameChar++) {
+            nodeInfo[nodeCount].node_name[nameChar] = '\0';
+        }
     }
 }
 
-void printNodeInfo(void) {
+void printNodeInfo(int index) {
+        Serial.print("Node Name: '"); Serial.print(nodeInfo[index].node_name);
+        Serial.print("'");
+        Serial.print(" Node ID: "); Serial.print(nodeInfo[index].node_id);
+        Serial.print(" Port ID: "); Serial.print(nodeInfo[index].port_id);
+        Serial.print(" Servo Min: "); Serial.print(nodeInfo[index].servo_min);
+        Serial.print(" Servo Max: "); Serial.print(nodeInfo[index].servo_max);
+        Serial.print(" Messags: "); Serial.print(nodeInfo[index].receive_count);
+        Serial.print(" + Mesgs: "); Serial.print(nodeInfo[index].new_count);
+        Serial.print(" last ms: "); Serial.print(nodeInfo[index].last_heard);
+
+
+void printNodes(void) {
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        Serial.print("Node ID: "); Serial.print(nodeInfo[nodeCount].node_id);
-        Serial.print(" Port ID: "); Serial.print(nodeInfo[nodeCount].port_id);
-        Serial.print(" Messags: "); Serial.print(nodeInfo[nodeCount].receive_count);
-        Serial.print(" + Mesgs: "); Serial.print(nodeInfo[nodeCount].new_count);
-        Serial.print(" last ms: "); Serial.print(nodeInfo[nodeCount].last_heard);
-        Serial.print(" Node Name: '"); Serial.print(nodeInfo[nodeCount].node_name);
-        Serial.println("'");
+        printNodeInfo(nodeCount);
+        Serial.println();
     }
 }
 
@@ -162,22 +161,52 @@ void readNodeIDServoMap(void) {
 #endif // DEBUG
 
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+
+        // node_id
         nodeInfo[nodeCount].node_id = EEPROM.read(address);
+        address++;
         if (nodeInfo[nodeCount].node_id == 255) { // uninitialized EEPROM
             nodeInfo[nodeCount].node_id = 0;
         }
-        address++;
 #ifdef DEBUG
         Serial.print(".");
 #endif // DEBUG
+
+        // port_id
         nodeInfo[nodeCount].port_id = EEPROM.read(address);
+        address++;
         if (nodeInfo[nodeCount].port_id == 255) { // uninitialized EEPROM
             nodeInfo[nodeCount].port_id = 0;
         }
-        address++;
 #ifdef DEBUG
         Serial.print(".");
 #endif // DEBUG
+
+        // servo_min (word)
+        nodeInfo[nodeCount].servo_min = EEPROM.read(address) << 8;
+        address++;
+        nodeInfo[nodeCount].servo_min |= EEPROM.read(address);
+        address++;
+        if (nodeInfo[nodeCount].servo_min == 65535) { // uninitialized EEPROM
+            nodeInfo[nodeCount].servo_min = servoCenterPW;
+        }
+#ifdef DEBUG
+        Serial.print(".");
+#endif // DEBUG
+
+        // servo_max (word)
+        nodeInfo[nodeCount].servo_max = EEPROM.read(address) << 8;
+        address++;
+        nodeInfo[nodeCount].servo_min |= EEPROM.read(address);
+        address++;
+        if (nodeInfo[nodeCount].servo_max == 65535) { // uninitialized EEPROM
+            nodeInfo[nodeCount].servo_max = servoCenterPW;
+        }
+#ifdef DEBUG
+        Serial.print(".");
+#endif // DEBUG
+
+        // node_name (NODENAMEMAX-1 bytes)
         for (int nameChar=0; nameChar < (NODENAMEMAX-1); nameChar++) {
             nodeInfo[nodeCount].node_name[nameChar] = EEPROM.read(address);
             address++;
@@ -198,6 +227,8 @@ void readNodeIDServoMap(void) {
 
 void writeNodeIDServoMap(void) {
     int address = 0;
+    byte currentByte = 0;
+    word currentWord = 0;
 
 #ifdef DEBUG
     Serial.print("Writing nodeInfo to EEPROM");
@@ -206,41 +237,57 @@ void writeNodeIDServoMap(void) {
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
 
         // Only write nodeID if it changed
-        int currentValue = EEPROM.read(address);
-        if (currentValue != nodeInfo[nodeCount].node_id) {
+        currentByte = EEPROM.read(address);
+        if (currentByte != nodeInfo[nodeCount].node_id) {
             EEPROM.write(address, nodeInfo[nodeCount].node_id);
-            address++;
-            delay(4);
 #ifdef DEBUG
-    Serial.print(".");
+            Serial.print(".");
 #endif // DEBUG
-        } else {
-            address++;
         }
+        address++;
 
-        // Only write ServoNr if it changed
-        currentValue = EEPROM.read(address);
-        if (currentValue != nodeInfo[nodeCount].port_id) {
+        // Only write port_id if it changed
+        currentByte = EEPROM.read(address);
+        if (currentByte != nodeInfo[nodeCount].port_id) {
             EEPROM.write(address, nodeInfo[nodeCount].port_id);
-            address++;
-            delay(4);
 #ifdef DEBUG
-    Serial.print(".");
+            Serial.print(".");
 #endif // DEBUG
-        } else {
-            address++;
         }
+        address++;
+
+        // Only write servo min if it changed
+        currentWord = EEPROM.read(address) << 8;
+        currentWord |= EEPROM.read(address + 1);
+        if (currentWord != nodeInfo[nodeCount].servo_min) {
+            EEPROM.write(address, highByte(nodeInfo[nodeCount].servo_min));
+            EEPROM.write(address + 1, lowByte(nodeInfo[nodeCount].servo_min));
+#ifdef DEBUG
+            Serial.print(".");
+#endif // DEBUG
+        }
+        address += 2;
+
+        // Only write Servo max if it changed
+        currentWord = EEPROM.read(address) << 8;
+        currentWord |= EEPROM.read(address + 1);
+        if (currentWord != nodeInfo[nodeCount].servo_max) {
+            EEPROM.write(address, highByte(nodeInfo[nodeCount].servo_max));
+            EEPROM.write(address, lowByte(nodeInfo[nodeCount].servo_max));
+#ifdef DEBUG
+            Serial.print(".");
+#endif // DEBUG
+        }
+        address += 2;
 
         // Only write name bytes that changed
         for (int nameChar=0; nameChar < (NODENAMEMAX-1); nameChar++) {
-            currentValue = EEPROM.read(address);
-            if (currentValue != nodeInfo[nodeCount].node_name[nameChar]) {
+            currentByte = EEPROM.read(address);
+            if (currentByte != nodeInfo[nodeCount].node_name[nameChar]) {
                 EEPROM.write(address, nodeInfo[nodeCount].node_name[nameChar]);
                 address++;
-                delay(4);
-            } else {
-                address++;
             }
+            address++;
         }
         // nodeInfo[nodeCount].node_name[NODENAMEMAX-1] always init to '\0'
     }
@@ -248,5 +295,3 @@ void writeNodeIDServoMap(void) {
     Serial.println();
 #endif // DEBUG
 }
-
-

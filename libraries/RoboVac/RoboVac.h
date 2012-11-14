@@ -66,6 +66,17 @@
     Serial.print(seconds); Serial.print(" (");\
     Serial.print(CURRENTTIME); Serial.print(") ");\
 }
+#define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {\
+    PRINTTIME(CURRENTtIME);\
+    Serial.print("Message:");\
+    Serial.print(" Magic: 0x"); Serial.print(message.magic, HEX);\
+    Serial.print(" Version: "); Serial.print(message.version);\
+    Serial.print(" node ID: "); Serial.print(message.node_id);\
+    Serial.print(" Uptime: ");\
+    Serial.print(message.up_time); Serial.print("ms ");\
+    Serial.print("Sig. Stren: "); Serial.print(SIGsTREN);\
+    Serial.println();\
+}
 
 typedef struct message_s {
     word magic; // constant 0x42
@@ -74,33 +85,10 @@ typedef struct message_s {
     unsigned long up_time; // number of miliseconds running
 } message_t;
 
-typedef struct nodeInfo_s {
-    byte node_id; // node ID
-    unsigned char port_id; // servo node_id is mapped to
-    char node_name[NODENAMEMAX]; // name of the node
-    unsigned char receive_count; // number of messages received in THRESHOLD
-    unsigned char new_count; // messages just received
-    unsigned long last_heard; // timestamp last message was received
-} nodeInfo_t;
-
-typedef enum vacstate_e {
-    VAC_LISTENING, // Waiting for Signal
-    VAC_VACPOWERUP, // Powering up vacuum
-    VAC_SERVOPOWERUP, // Powering up servos
-    VAC_SERVOACTION, // Moving Servos
-    VAC_SERVOPOWERDN, // Powering down servos
-    VAC_VACUUMING, // Waiting for down threshold
-    VAC_VACPOWERDN, // Powering down vacuum
-    VAC_SERVOPOSTPOWERUP, // Powering up servos again
-    VAC_SERVOSTANDBY,     // open all ports
-    VAC_SERVOPOSTPOWERDN, // Powering down servos again
-    VAC_ENDSTATE, // Return to listening
-} vacstate_t;
-
 void makeMessage(message_t *message, byte nodeID);
 
 void copyMessage(message_t *destination, const message_t *source);
 
-boolean validMessage(const message_t *message, unsigned long listen_up_time);
+boolean validMessage(const message_t *message);
 
 #endif // ROBOVAC_H

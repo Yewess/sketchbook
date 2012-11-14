@@ -22,14 +22,17 @@
 #define EVENTS_H
 
 #include <Arduino.h>
+#include <VirtualWire.h>
 #include <RoboVac.h>
 #include "config.h"
+#include "statemachine.h"
+#include "nodeinfo.h"
 
 /* externals */
 
 /* function definitions */
+void actionStateEvent(TimerInformation *Sender);
 void pollRxEvent(TimerInformation *Sender);
 void printStatusEvent(TimerInformation *Sender);
-void printMessage(unsigned long currentTime);
 
 #endif // EVENTS_H

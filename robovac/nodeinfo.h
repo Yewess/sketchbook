@@ -22,10 +22,22 @@
 #define NODEINFO_H
 
 #include <Arduino.h>
+#include <EEPROM.h>
 #include <RoboVac.h>
 #include "config.h"
 
-/* externals */
+/* types */
+
+typedef struct nodeInfo_s {
+    byte node_id; // node ID
+    byte port_id; // servo node_id is mapped to
+    word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
+    word servo_max; // maximum limit of travel
+    unsigned char receive_count; // number of messages received in THRESHOLD
+    unsigned char new_count; // messages just received
+    unsigned long last_heard; // timestamp last message was received
+    char node_name[NODENAMEMAX]; // name of the node
+} nodeInfo_t;
 
 /* Function definitions */
 
@@ -33,7 +45,8 @@ void updateNodes(unsigned long currentTime);
 nodeInfo_t *activeNode(unsigned long currentTime);
 nodeInfo_t *findNode(byte node_id);
 void setupNodeInfo(void);
-void printNodeInfo(void);
+void printNodeInfo(int index);
+void printNodes(void);
 void readNodeIDServoMap(void);
 void writeNodeIDServoMap(void);
 

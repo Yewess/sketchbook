@@ -22,19 +22,20 @@
     Dependencies:
     ebl-arduino: http://code.google.com/p/ebl-arduino/
     virtual wire: http://www.pjrc.com/teensy/td_libs_VirtualWire.html
-
-    Pitfalls: virtual wire uses Timer1 (can't use PWM on pin 9 & 10
+    Adafruit_RGBLCDShield: git://github.com/adafruit/Adafruit-RGB-LCD-Shield-Library.git
+    Adafruit_PWMServoDriver: git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
 */
 
-#include <EEPROM.h>
 #include <TimedEvent.h>
 #include <VirtualWire.h>
+#include <Adafruit_RGBLCDShield>
+#include <Adafruit_PWMServoDriver>
 #include <RoboVac.h>
 #include "config.h"
-#include "nodeinfo.h"
-#include "statemachine.h"
-#include "control.h"
+#include "lcd.h"
 #include "events.h"
+#include "statemachine.h"
+#include "nodeinfo.h"
 
 /* Main Program */
 
@@ -45,23 +46,6 @@ void setup() {
     Serial.begin(SERIALBAUD);
     Serial.println("setup()");
 #endif // DEBUG
-
-    // Initialize array
-    setupNodeInfo();
-    // Load stored map data
-    readNodeIDServoMap();
-#ifdef DEBUG
-    nodeInfo[2].node_id = 7;
-    nodeInfo[2].port_id = 42;
-    strcpy(nodeInfo[2].node_name, "TEST NODE 7");
-    nodeInfo[4].node_id = 9;
-    nodeInfo[4].port_id = 44;
-    strcpy(nodeInfo[4].node_name, "TEST NODE 10");
-#endif // DEBUG
-
-    // Make sure content matches
-    writeNodeIDServoMap();
-    printNodeInfo();
 
     pinMode(rxDataPin, INPUT);
     pinMode(signalStrengthPin, INPUT);
@@ -74,11 +58,24 @@ void setup() {
 
     // Setup events
     TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
-    TimedEvent.addTimer(STATEINTERVAL, handleActionState);
+    TimedEvent.addTimer(STATEINTERVAL, actionStateEvent);
     TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
 
     // Setup state machine
     lastStateChange = millis();
+
+    // Initialize array
+    setupNodeInfo();
+
+    // Load stored data
+    readNodeIDServoMap();
+
+    // set up the LCD's number of columns and rows
+    // and pwm servo board
+    lcd.begin(16, 2);
+    lcd.setBacklight(0x1); // ON
+    pwm.begin();
+    pwm.setPWMFreq(60);
 
     // debugging stuff
 #ifdef DEBUG
@@ -88,7 +85,9 @@ void setup() {
     Serial.print("  RXTXBAUD: "); Serial.print(RXTXBAUD);
     Serial.print("\nStat. Int.: "); Serial.print(STATUSINTERVAL);
     Serial.print("ms  Poll Int.: "); Serial.print(POLLINTERVAL);
-    Serial.println("ms"); Serial.println("loop()");
+    Serial.println("ms");
+    printNodes();
+    Serial.println("\nloop()");
 #endif // DEBUG
 }
 
