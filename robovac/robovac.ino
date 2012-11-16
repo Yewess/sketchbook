@@ -26,17 +26,26 @@
     Adafruit_PWMServoDriver: git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
 */
 
-
-#include "config.h"
+#include <Arduino.h>
+#include <Wire.h>
+#include <EEPROM.h>
+#include <VirtualWire.h>
+#include <TimedEvent.h>
+#include <Adafruit_RGBLCDShield.h>
+#include <Adafruit_PWMServoDriver.h>
+#include <RoboVac.h>
+#include "globals.h"
+#include "control.h"
+#include "nodeinfo.h"
+#include "statemachine.h"
+#include "events.h"
 
 /* Main Program */
 
 void setup() {
 
     // debugging info
-#ifdef DEBUG
     Serial.begin(SERIALBAUD);
-#endif // DEBUG
     D("setup()");
 
     pinMode(rxDataPin, INPUT);
@@ -77,10 +86,9 @@ void setup() {
     D("  RXTXBAUD: "); D(RXTXBAUD);
     D("\nStat. Int.: "); D(STATUSINTERVAL);
     D("ms  Poll Int.: "); D(POLLINTERVAL);
-    Dln("ms");
+    D("ms\n");
     printNodes();
-    Dln("\nloop()");
-
+    D("\nloop()\n");
 }
 
 void loop() {

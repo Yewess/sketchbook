@@ -95,6 +95,31 @@
 #define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {;;}
 #endif // DEBUG
 
+typedef struct nodeInfo_s {
+    byte node_id; // node ID
+    byte port_id; // servo node_id is mapped to
+    word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
+    word servo_max; // maximum limit of travel
+    unsigned char receive_count; // number of messages received in THRESHOLD
+    unsigned char new_count; // messages just received
+    unsigned long last_heard; // timestamp last message was received
+    char node_name[NODENAMEMAX]; // name of the node
+} nodeInfo_t;
+
+typedef enum vacstate_e {
+    VAC_LISTENING, // Waiting for Signal
+    VAC_VACPOWERUP, // Powering up vacuum
+    VAC_SERVOPOWERUP, // Powering up servos
+    VAC_SERVOACTION, // Moving Servos
+    VAC_SERVOPOWERDN, // Powering down servos
+    VAC_VACUUMING, // Waiting for down threshold
+    VAC_VACPOWERDN, // Powering down vacuum
+    VAC_SERVOPOSTPOWERUP, // Powering up servos again
+    VAC_SERVOSTANDBY,     // open all ports
+    VAC_SERVOPOSTPOWERDN, // Powering down servos again
+    VAC_ENDSTATE, // Return to listening
+} vacstate_t;
+
 typedef struct message_s {
     word magic; // constant 0x42
     byte version; // protocol version

@@ -1,32 +1,45 @@
-/*
-  Vacuum power and hose selection controller
-
-    Copyright (C) 2012 Chris Evich <chris-arduino@anonomail.me>
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-*/
 
 #ifndef EVENTS_H
 #define EVENTS_H
 
-#include <TimedEvent.h>
-#include "config.h"
+void actionStateEvent(TimerInformation *Sender) {
+    handleActionState();
+}
 
-/* function definitions */
-void actionStateEvent(TimerInformation *Sender);
-void pollRxEvent(TimerInformation *Sender);
-void printStatusEvent(TimerInformation *Sender);
+void pollRxEvent(TimerInformation *Sender) {
+    boolean CRCGood = false;
+    uint8_t buffLen = sizeof(message_t);
+    uint8_t *messageBuff = (uint8_t *) &message;
+    unsigned long currentTime = millis();
+
+    signalStrength = analogRead(signalStrengthPin);
+    if (vw_have_message()) {
+        digitalWrite(statusLEDPin, HIGH);
+        CRCGood = vw_get_message(messageBuff, &buffLen);
+        if ( (CRCGood == false) || (validMessage(&message) == false)
+                                || (findNode(message.node_id) == NULL) ) {
+                blankMessage = true;
+                PRINTMESSAGE(millis(), message, signalStrength);
+                if (CRCGood == false) {
+                    D("Bad CRC ");
+                }
+                if (validMessage(&message) == false) {
+                    D("Invalid message ");
+                }
+                if (findNode(message.node_id) == NULL) {
+                    D("Invalid node_id ");
+                    D(message.node_id)
+                }
+                D("\n");
+        } else {
+            blankMessage = false;
+        }
+    }
+}
+
+void printStatusEvent(TimerInformation *Sender) {
+    PRINTMESSAGE(millis(), message, signalStrength);
+    digitalWrite(statusLEDPin, LOW);
+}
 
 #endif // EVENTS_H
