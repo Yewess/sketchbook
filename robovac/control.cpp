@@ -39,6 +39,7 @@ void vacControl(boolean turnOn) {
 void moveServos(unsigned char port_id) {
     // will be called repeatidly until SERVOMOVETIME expires
     // port_id could change on any call
+    int nodeCount=0;
 
 #ifdef DEBUG
         PRINTTIME(millis());
@@ -48,7 +49,7 @@ void moveServos(unsigned char port_id) {
         Serial.print("Opening all port doors");
 #endif // DEBUG
     } else { // Close all ports except port_id
-        for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+        for (nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
             if (nodeInfo[nodeCount].port_id != port_id) {
 #ifdef DEBUG
                 Serial.print("Closing node_id ");

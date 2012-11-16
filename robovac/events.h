@@ -21,14 +21,8 @@
 #ifndef EVENTS_H
 #define EVENTS_H
 
-#include <Arduino.h>
-#include <VirtualWire.h>
-#include <RoboVac.h>
+#include <TimedEvent.h>
 #include "config.h"
-#include "statemachine.h"
-#include "nodeinfo.h"
-
-/* externals */
 
 /* function definitions */
 void actionStateEvent(TimerInformation *Sender);

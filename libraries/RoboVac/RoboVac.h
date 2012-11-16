@@ -34,6 +34,7 @@
 
 // Macros
 #define STATE2CASE(STATE) case STATE: stateStr = #STATE; break;
+
 #define STATE2STRING(STATE) {\
     switch (STATE) {\
         STATE2CASE(VAC_LISTENING)\
@@ -50,9 +51,17 @@
         default: stateStr = "MISSING STATE!!!\0"; break;\
     }\
 }
-#define PRINTTIME(CURRENTTIME) {\
-    int seconds = (CURRENTTIME / 1000);\
-    int millisec = CURRENTTIME % 1000;\
+
+#ifdef DEBUG
+#define D(...) Serial.print(__VA_ARGS__)
+#else
+#define D(...) {;;}
+#endif // DEBUG
+
+#ifdef DEBUG
+#define PRINTTIME(MILLIS) {\
+    int seconds = (MILLIS / 1000);\
+    int millisec = MILLIS % 1000;\
     int minutes = seconds / 60;\
     seconds = seconds % 60;\
     int hours = minutes / 60;\
@@ -60,23 +69,31 @@
     int days = hours / 24;\
     hours = hours % 24;\
     \
-    Serial.print(days); Serial.print(":");\
-    Serial.print(hours); Serial.print(":");\
-    Serial.print(minutes); Serial.print(":");\
-    Serial.print(seconds); Serial.print(" (");\
-    Serial.print(CURRENTTIME); Serial.print(") ");\
+    D(days); D(":");\
+    D(hours); D(":");\
+    D(minutes); D(":");\
+    D(seconds); D(" (");\
+    D(MILLIS); D(") ");\
 }
+#else
+#define PRINTTIME(CURRENTTIME) {;;}
+#endif // DEBUG
+
+#ifdef DEBUG
 #define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {\
-    PRINTTIME(CURRENTtIME);\
-    Serial.print("Message:");\
-    Serial.print(" Magic: 0x"); Serial.print(message.magic, HEX);\
-    Serial.print(" Version: "); Serial.print(message.version);\
-    Serial.print(" node ID: "); Serial.print(message.node_id);\
-    Serial.print(" Uptime: ");\
-    Serial.print(message.up_time); Serial.print("ms ");\
-    Serial.print("Sig. Stren: "); Serial.print(SIGsTREN);\
-    Serial.println();\
+    PRINTTIME(CURRENTTIME);\
+    D("Message:");\
+    D(" Magic: 0x"); D(message.magic, HEX);\
+    D(" Version: "); D(message.version);\
+    D(" node ID: "); D(message.node_id);\
+    D(" Uptime: ");\
+    D(message.up_time); D("ms ");\
+    D("Sig. Stren: "); D(SIGSTREN);\
+    D("\n");\
 }
+#else
+#define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {;;}
+#endif // DEBUG
 
 typedef struct message_s {
     word magic; // constant 0x42

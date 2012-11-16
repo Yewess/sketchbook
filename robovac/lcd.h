@@ -21,8 +21,7 @@
 #ifndef LCD_H
 #define LCD_H
 
-#include <Arduino.h>
-#include <RoboVac.h>
+#include "config.h"
 
 
 #endif // LCD_H

@@ -26,16 +26,8 @@
     Adafruit_PWMServoDriver: git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
 */
 
-#include <TimedEvent.h>
-#include <VirtualWire.h>
-#include <Adafruit_RGBLCDShield>
-#include <Adafruit_PWMServoDriver>
-#include <RoboVac.h>
+
 #include "config.h"
-#include "lcd.h"
-#include "events.h"
-#include "statemachine.h"
-#include "nodeinfo.h"
 
 /* Main Program */
 
@@ -44,8 +36,8 @@ void setup() {
     // debugging info
 #ifdef DEBUG
     Serial.begin(SERIALBAUD);
-    Serial.println("setup()");
 #endif // DEBUG
+    D("setup()");
 
     pinMode(rxDataPin, INPUT);
     pinMode(signalStrengthPin, INPUT);
@@ -78,17 +70,17 @@ void setup() {
     pwm.setPWMFreq(60);
 
     // debugging stuff
-#ifdef DEBUG
-    Serial.print("rxDataPin: "); Serial.print(rxDataPin);
-    Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
-    Serial.print("  SERIALBAUD: "); Serial.print(SERIALBAUD);
-    Serial.print("  RXTXBAUD: "); Serial.print(RXTXBAUD);
-    Serial.print("\nStat. Int.: "); Serial.print(STATUSINTERVAL);
-    Serial.print("ms  Poll Int.: "); Serial.print(POLLINTERVAL);
-    Serial.println("ms");
+
+    D("rxDataPin: "); D(rxDataPin);
+    D("  statusLEDPin: "); D(statusLEDPin);
+    D("  SERIALBAUD: "); D(SERIALBAUD);
+    D("  RXTXBAUD: "); D(RXTXBAUD);
+    D("\nStat. Int.: "); D(STATUSINTERVAL);
+    D("ms  Poll Int.: "); D(POLLINTERVAL);
+    Dln("ms");
     printNodes();
-    Serial.println("\nloop()");
-#endif // DEBUG
+    Dln("\nloop()");
+
 }
 
 void loop() {

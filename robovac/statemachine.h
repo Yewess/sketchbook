@@ -21,27 +21,7 @@
 #ifndef STATEMACHINE_H
 #define STATEMACHINE_H
 
-#include <Arduino.h>
-#include <RoboVac.h>
 #include "config.h"
-#include "control.h"
-
-/* types */
-
-typedef enum vacstate_e {
-    VAC_LISTENING, // Waiting for Signal
-    VAC_VACPOWERUP, // Powering up vacuum
-    VAC_SERVOPOWERUP, // Powering up servos
-    VAC_SERVOACTION, // Moving Servos
-    VAC_SERVOPOWERDN, // Powering down servos
-    VAC_VACUUMING, // Waiting for down threshold
-    VAC_VACPOWERDN, // Powering down vacuum
-    VAC_SERVOPOSTPOWERUP, // Powering up servos again
-    VAC_SERVOSTANDBY,     // open all ports
-    VAC_SERVOPOSTPOWERDN, // Powering down servos again
-    VAC_ENDSTATE, // Return to listening
-} vacstate_t;
-
 
 /* function definitions */
 
