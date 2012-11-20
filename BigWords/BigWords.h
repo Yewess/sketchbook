@@ -41,6 +41,9 @@
        ####
         ###
           #
+
+   A handy webap for generating custom characters is at:
+   http://www.quinapalus.com/hd44780udg.html
 */
 
 uint8_t custom_segments[][8] = {

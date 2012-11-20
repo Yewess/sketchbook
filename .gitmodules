@@ -1,6 +1,3 @@
 [submodule "libraries/Adafruit_RGBLCDShield"]
 	path = libraries/Adafruit_RGBLCDShield
 	url = git://github.com/adafruit/Adafruit-RGB-LCD-Shield-Library.git
-[submodule "libraries/Adafruit_PWMServoDriver"]
-	path = libraries/Adafruit_PWMServoDriver
-	url = git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git

@@ -1,3 +1,0 @@
-message_t	KEYWORD1
-message_size	KEYWORD1
-printMessage	KEYWORD2
