@@ -22,46 +22,30 @@
     Dependencies:
     ebl-arduino: http://code.google.com/p/ebl-arduino/
     virtual wire: http://www.pjrc.com/teensy/td_libs_VirtualWire.html
-
-    Pitfalls: virtual wire uses Timer1 (can't use PWM on pin 9 & 10
+    Adafruit_RGBLCDShield: git://github.com/adafruit/Adafruit-RGB-LCD-Shield-Library.git
+    Adafruit_PWMServoDriver: git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
 */
 
+#include <Arduino.h>
+#include <Wire.h>
 #include <EEPROM.h>
-#include <TimedEvent.h>
 #include <VirtualWire.h>
+#include <TimedEvent.h>
+#include <Adafruit_RGBLCDShield.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <RoboVac.h>
-#include "config.h"
+#include "globals.h"
+#include "control.h"
 #include "nodeinfo.h"
 #include "statemachine.h"
-#include "control.h"
 #include "events.h"
 
 /* Main Program */
 
 void setup() {
-
     // debugging info
-#ifdef DEBUG
     Serial.begin(SERIALBAUD);
-    Serial.println("setup()");
-#endif // DEBUG
-
-    // Initialize array
-    setupNodeInfo();
-    // Load stored map data
-    readNodeIDServoMap();
-#ifdef DEBUG
-    nodeInfo[2].node_id = 7;
-    nodeInfo[2].port_id = 42;
-    strcpy(nodeInfo[2].node_name, "TEST NODE 7");
-    nodeInfo[4].node_id = 9;
-    nodeInfo[4].port_id = 44;
-    strcpy(nodeInfo[4].node_name, "TEST NODE 10");
-#endif // DEBUG
-
-    // Make sure content matches
-    writeNodeIDServoMap();
-    printNodeInfo();
+    D("setup()");
 
     pinMode(rxDataPin, INPUT);
     pinMode(signalStrengthPin, INPUT);
@@ -74,22 +58,36 @@ void setup() {
 
     // Setup events
     TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
-    TimedEvent.addTimer(STATEINTERVAL, handleActionState);
-    TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
+    TimedEvent.addTimer(STATEINTERVAL, robovacStateEvent);
+    TimedEvent.addTimer(STATUSINTERVAL, statusEvent);
+    TimedEvent.addTimer(LCDINTERVAL, lcdEvent);
 
     // Setup state machine
     lastStateChange = millis();
 
+    // Initialize array
+    setupNodeInfo();
+
+    // Load stored data
+    readNodeIDServoMap();
+
+    // set up the LCD's number of columns and rows
+    // and pwm servo board
+    lcd.begin(16, 2);
+    lcd.setBacklight(0x1); // ON
+    pwm.begin();
+    pwm.setPWMFreq(60);
+
     // debugging stuff
-#ifdef DEBUG
-    Serial.print("rxDataPin: "); Serial.print(rxDataPin);
-    Serial.print("  statusLEDPin: "); Serial.print(statusLEDPin);
-    Serial.print("  SERIALBAUD: "); Serial.print(SERIALBAUD);
-    Serial.print("  RXTXBAUD: "); Serial.print(RXTXBAUD);
-    Serial.print("\nStat. Int.: "); Serial.print(STATUSINTERVAL);
-    Serial.print("ms  Poll Int.: "); Serial.print(POLLINTERVAL);
-    Serial.println("ms"); Serial.println("loop()");
-#endif // DEBUG
+    D("rxDataPin: "); D(rxDataPin);
+    D("  statusLEDPin: "); D(statusLEDPin);
+    D("  SERIALBAUD: "); D(SERIALBAUD);
+    D("  RXTXBAUD: "); D(RXTXBAUD);
+    D("\nStat. Int.: "); D(STATUSINTERVAL);
+    D("ms  Poll Int.: "); D(POLLINTERVAL);
+    D("ms\n");
+    printNodes();
+    D("\nloop()\n");
 }
 
 void loop() {

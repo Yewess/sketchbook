@@ -34,6 +34,7 @@
 
 // Macros
 #define STATE2CASE(STATE) case STATE: stateStr = #STATE; break;
+
 #define STATE2STRING(STATE) {\
     switch (STATE) {\
         STATE2CASE(VAC_LISTENING)\
@@ -50,9 +51,17 @@
         default: stateStr = "MISSING STATE!!!\0"; break;\
     }\
 }
-#define PRINTTIME(CURRENTTIME) {\
-    int seconds = (CURRENTTIME / 1000);\
-    int millisec = CURRENTTIME % 1000;\
+
+#ifdef DEBUG
+#define D(...) Serial.print(__VA_ARGS__)
+#else
+#define D(...) {;;}
+#endif // DEBUG
+
+#ifdef DEBUG
+#define PRINTTIME(MILLIS) {\
+    int seconds = (MILLIS / 1000);\
+    int millisec = MILLIS % 1000;\
     int minutes = seconds / 60;\
     seconds = seconds % 60;\
     int hours = minutes / 60;\
@@ -60,27 +69,41 @@
     int days = hours / 24;\
     hours = hours % 24;\
     \
-    Serial.print(days); Serial.print(":");\
-    Serial.print(hours); Serial.print(":");\
-    Serial.print(minutes); Serial.print(":");\
-    Serial.print(seconds); Serial.print(" (");\
-    Serial.print(CURRENTTIME); Serial.print(") ");\
+    D(days); D(":");\
+    D(hours); D(":");\
+    D(minutes); D(":");\
+    D(seconds); D(" (");\
+    D(MILLIS); D(") ");\
 }
+#else
+#define PRINTTIME(CURRENTTIME) {;;}
+#endif // DEBUG
 
-typedef struct message_s {
-    word magic; // constant 0x42
-    byte version; // protocol version
-    byte node_id; // node ID
-    unsigned long up_time; // number of miliseconds running
-} message_t;
+#ifdef DEBUG
+#define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {\
+    PRINTTIME(CURRENTTIME);\
+    D("Message:");\
+    D(" Magic: 0x"); D(message.magic, HEX);\
+    D(" Version: "); D(message.version);\
+    D(" node ID: "); D(message.node_id);\
+    D(" Uptime: ");\
+    D(message.up_time); D("ms ");\
+    D("Sig. Stren: "); D(SIGSTREN);\
+    D("\n");\
+}
+#else
+#define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {;;}
+#endif // DEBUG
 
 typedef struct nodeInfo_s {
     byte node_id; // node ID
-    unsigned char port_id; // servo node_id is mapped to
-    char node_name[NODENAMEMAX]; // name of the node
+    byte port_id; // servo node_id is mapped to
+    word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
+    word servo_max; // maximum limit of travel
     unsigned char receive_count; // number of messages received in THRESHOLD
     unsigned char new_count; // messages just received
     unsigned long last_heard; // timestamp last message was received
+    char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
 
 typedef enum vacstate_e {
@@ -97,10 +120,26 @@ typedef enum vacstate_e {
     VAC_ENDSTATE, // Return to listening
 } vacstate_t;
 
+typedef enum lcdState_e {
+    LCD_STARTUP, // Splash Screen
+    LCD_ACTIVEWAIT, // Backlight on, waiting
+    LCD_SLEEPWAIT, // Backlight off, waiting
+    LCD_MENU, // Backlight on, config. menu
+    LCD_RUNNING, // Backlight on, vacuuming
+    LCD_ENDSTATE, // Go back to LCD_ACTIVEWAIT
+} lcdState_t;
+
+typedef struct message_s {
+    word magic; // constant 0x42
+    byte version; // protocol version
+    byte node_id; // node ID
+    unsigned long up_time; // number of miliseconds running
+} message_t;
+
 void makeMessage(message_t *message, byte nodeID);
 
 void copyMessage(message_t *destination, const message_t *source);
 
-boolean validMessage(const message_t *message, unsigned long listen_up_time);
+boolean validMessage(const message_t *message);
 
 #endif // ROBOVAC_H
