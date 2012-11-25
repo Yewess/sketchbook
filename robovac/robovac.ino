@@ -39,28 +39,40 @@
 #include "nodeinfo.h"
 #include "statemachine.h"
 #include "events.h"
+#include "lcd.h"
+#include "menu.h"
 
 /* Main Program */
 
 void setup() {
-    // debugging info
     Serial.begin(SERIALBAUD);
     D("setup()");
 
+    D("SERIALBAUD: "); D(SERIALBAUD);
+    D("  rxDataPin: "); D(rxDataPin);
     pinMode(rxDataPin, INPUT);
-    pinMode(signalStrengthPin, INPUT);
     vw_set_rx_pin(rxDataPin);
+    D("  Sig. Stren Pin:"); D(signalStrengthPin);
+    pinMode(signalStrengthPin, INPUT);
+    D("  statusLEDPin: "); D(statusLEDPin);
     vw_set_ptt_pin(statusLEDPin);
     pinMode(statusLEDPin, OUTPUT);
     digitalWrite(statusLEDPin, LOW);
+    D("  RXTXBAUD: "); D(RXTXBAUD);
     vw_setup(RXTXBAUD);
     vw_rx_start();
+    D("\n");
 
     // Setup events
+    D("Poll Int.: "); D(POLLINTERVAL);
     TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
+    D("ms  Vac State Int.: "); D(STATEINTERVAL);
     TimedEvent.addTimer(STATEINTERVAL, robovacStateEvent);
+    D("ms  Stat. Int.: "); D(STATUSINTERVAL);
     TimedEvent.addTimer(STATUSINTERVAL, statusEvent);
+    D("ms  LCD Int.: "); D(LCDINTERVAL);
     TimedEvent.addTimer(LCDINTERVAL, lcdEvent);
+    D("\n");
 
     // Setup state machine
     lastStateChange = millis();
@@ -71,22 +83,19 @@ void setup() {
     // Load stored data
     readNodeIDServoMap();
 
+    // Debugging info.
+    printNodes();
+
     // set up the LCD's number of columns and rows
     // and pwm servo board
-    lcd.begin(16, 2);
+    lcd.begin(lcdCols, lcdRows);
     lcd.setBacklight(0x1); // ON
     pwm.begin();
     pwm.setPWMFreq(60);
 
-    // debugging stuff
-    D("rxDataPin: "); D(rxDataPin);
-    D("  statusLEDPin: "); D(statusLEDPin);
-    D("  SERIALBAUD: "); D(SERIALBAUD);
-    D("  RXTXBAUD: "); D(RXTXBAUD);
-    D("\nStat. Int.: "); D(STATUSINTERVAL);
-    D("ms  Poll Int.: "); D(POLLINTERVAL);
-    D("ms\n");
-    printNodes();
+    // Setup menu
+    menuSetup();
+
     D("\nloop()\n");
 }
 

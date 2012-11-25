@@ -1,23 +1,27 @@
 #ifndef NODEINFO_H
 #define NODEINFO_H
 
-void updateNodes(unsigned long currentTime) {
+#include <RoboVac.h>
+
+void updateNodes(unsigned long *currentTime) {
     // keep receive_count updated for all nodes
 
     // for each node, update receive_count by new_count w/in THRESHOLD
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        unsigned long elapsedTime = currentTime - nodeInfo[nodeCount].last_heard;
-        unsigned char max_count = THRESHOLD/TXINTERVAL;
-        unsigned char expired_count = elapsedTime % (THRESHOLD/GOODMSGMIN);
+        const unsigned long *elapsedTime = timerExpired(currentTime,
+                                                        &nodeInfo[nodeCount].last_heard,
+                                                        1);
+        unsigned int max_count = int(THRESHOLD)/int(TXINTERVAL);
+        unsigned int expired_count = *elapsedTime % (int(THRESHOLD)/int(GOODMSGMIN));
 
         // increase rate is capped by max transmit rate during threshold
         nodeInfo[nodeCount].receive_count += nodeInfo[nodeCount].new_count;
-        if (nodeInfo[nodeCount].receive_count > max_count) {
+        if (nodeInfo[nodeCount].receive_count >= max_count) {
             nodeInfo[nodeCount].receive_count = max_count;
             PRINTTIME(currentTime);
             D("Clipped node_id "); D(nodeInfo[nodeCount].node_id);
             D(" receive_count to "); D(max_count);
-            D("^@");
+            D("\n");
         }
 
         // for every (THRESHOLD/GOODMSGMIN) over, reduce count by one
@@ -26,14 +30,14 @@ void updateNodes(unsigned long currentTime) {
             PRINTTIME(currentTime);
             D("Reduced node_id "); D(nodeInfo[nodeCount].node_id);
             D(" receive_count by "); D(expired_count);
-            D("^@");
+            D("\n");
 
         } else {
             nodeInfo[nodeCount].receive_count = 0; // expired_count was bigger
             PRINTTIME(currentTime);
             D("Reduced node_id "); D(nodeInfo[nodeCount].node_id);
             D(" receive_count to 0");
-            D("^@");
+            D("\n");
         }
 
         // Any nodes w/o a receive_count loose last_heard
@@ -42,12 +46,12 @@ void updateNodes(unsigned long currentTime) {
             PRINTTIME(currentTime);
             D("Clipped node_id "); D(nodeInfo[nodeCount].node_id);
             D(" last_heard to 0");
-            D("^@");
+            D("\n");
         }
     }
 }
 
-nodeInfo_t *activeNode(unsigned long currentTime) {
+nodeInfo_t *activeNode(unsigned long *currentTime) {
     nodeInfo_t *result = NULL;
     // return most recent active node that meets >= GOODMSGMIN in THRESHOLD
     // or NULL if none meet the criteria
@@ -56,8 +60,8 @@ nodeInfo_t *activeNode(unsigned long currentTime) {
         if (nodeInfo[nodeCount].receive_count >= GOODMSGMIN) {
             if (result != NULL) { // most recent wins
                 if (nodeInfo[nodeCount].last_heard > result->last_heard) {
-                    PRINTMESSAGE(currentTime, message, signalStrength);
-                    PRINTTIME(currentTime);
+                    PRINTMESSAGE(*currentTime, message, signalStrength);
+                    PRINTTIME(*currentTime);
                     D("Warning: Node ");
                     D(nodeInfo[nodeCount].node_id);
                     D(" is competing with node ");

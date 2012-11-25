@@ -1,25 +1,29 @@
 #ifndef STATEMACHINE_H
 #define STATEMACHINE_H
 
-void updateState(vacstate_t newState, unsigned long currentTime) {
+#include "menu.h"
+
+void updateState(vacstate_t newState, unsigned long *currentTime) {
     const char *stateStr;
 
     if (newState > VAC_ENDSTATE) {
-        actionState = VAC_ENDSTATE;
+        newState = VAC_ENDSTATE;
     }
 
-    PRINTMESSAGE(currentTime, message, signalStrength);
-    PRINTTIME(currentTime);
-    STATE2STRING(actionState);
-    D("State Change: "); D(stateStr);
-    STATE2STRING(newState);
-    D(" -> "); D(stateStr);
-    D("\n");
-    actionState = newState;
-    lastStateChange = currentTime;
+    if (newState != actionState) {
+        PRINTMESSAGE(*currentTime, message, signalStrength);
+        PRINTTIME(*currentTime);
+        STATE2STRING(actionState);
+        D("State Change: "); D(stateStr);
+        STATE2STRING(newState);
+        D(" -> "); D(stateStr);
+        D("\n");
+        actionState = newState;
+        lastStateChange = *currentTime;
+    }
 }
 
-void handleActionState(unsigned long currentTime) {
+void handleActionState(unsigned long *currentTime) {
 
     // Handle overall state
     switch (actionState) {
@@ -36,7 +40,7 @@ void handleActionState(unsigned long currentTime) {
             currentActive = activeNode(currentTime);
             if (currentActive != NULL) { // node remained active
                 vacControl(true); // Power ON
-                if (currentTime > (lastStateChange + VACPOWERTIME)) {
+                if (timerExpired(currentTime, &lastStateChange, VACPOWERTIME)) {
                     // powerup finished
                     updateState(VAC_SERVOPOWERUP, currentTime);
                 } // else wait some more
@@ -49,7 +53,7 @@ void handleActionState(unsigned long currentTime) {
             currentActive = activeNode(currentTime);
             if (currentActive != NULL) { // node remained active
                 servoControl(true); // Power on
-                if (currentTime > (lastStateChange + SERVOPOWERTIME)) {
+                if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                     // Servo powerup finished
                     updateState(VAC_SERVOACTION, currentTime);
                 } // else wait some more
@@ -63,7 +67,7 @@ void handleActionState(unsigned long currentTime) {
             if (currentActive != NULL) { // node remained active
                 moveServos(currentActive->port_id);
                 if ( (lastActive == currentActive) && // node didn't change
-                     (currentTime > (lastStateChange + SERVOMOVETIME))) {
+                     timerExpired(currentTime, &lastStateChange, SERVOMOVETIME)) {
                     updateState(VAC_SERVOPOWERDN, currentTime);
                 } // not enough time and/or node id changed
             } else { // node shutdown
@@ -75,7 +79,7 @@ void handleActionState(unsigned long currentTime) {
             if (currentActive != NULL) { // node remained active
                 servoControl(false); // Power off
                 if ( (lastActive == currentActive) && // node didn't change
-                     (currentTime > (lastStateChange + SERVOPOWERTIME))) {
+                     timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                     updateState(VAC_VACUUMING, currentTime);
                 } // not enough time
             } else { // node shutdown
@@ -99,7 +103,7 @@ void handleActionState(unsigned long currentTime) {
             // before VAC_VACPOWERUP
             lastActive = currentActive = NULL;
             vacControl(false); // Power OFF
-            if (currentTime > (lastStateChange + VACPOWERTIME)) {
+            if (timerExpired(currentTime, &lastStateChange, VACPOWERTIME)) {
                 // waited long enough
                 updateState(VAC_SERVOPOSTPOWERUP, currentTime);
             } // wait longer
@@ -109,7 +113,7 @@ void handleActionState(unsigned long currentTime) {
             // ignore any nodes comming online, must go through VAC_SERVOSTANDBY
             lastActive = currentActive = NULL;
             servoControl(true); // Power on
-            if (currentTime > (lastStateChange + SERVOPOWERTIME)) {
+            if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                 // Servo powerup finished
                 updateState(VAC_SERVOSTANDBY, currentTime);
             } // else wait some more
@@ -119,7 +123,7 @@ void handleActionState(unsigned long currentTime) {
             // ignore any nodes comming online, must go through VAC_SERVOSTANDBY
             lastActive = currentActive = NULL;
             moveServos(0); // open all ports
-            if (currentTime > (lastStateChange + SERVOMOVETIME)) {
+            if (timerExpired(currentTime, &lastStateChange, SERVOMOVETIME)) {
                 updateState(VAC_SERVOPOSTPOWERDN, currentTime);
             } // else wait longer
             break;
@@ -128,7 +132,7 @@ void handleActionState(unsigned long currentTime) {
             // ignore any nodes comming online
             lastActive = currentActive = NULL;
             servoControl(false); // Power off
-            if (currentTime > (lastStateChange + SERVOPOWERTIME)) {
+            if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                 updateState(VAC_ENDSTATE, currentTime);
             } // not enough time
             break;
@@ -145,8 +149,110 @@ void handleActionState(unsigned long currentTime) {
     }
 }
 
-void handleLCDState(unsigned int currentTime) {
+void handleButtonPress(unsigned long *currentTime) {
+    if (lcdButtons & BUTTON_SELECT) {
+        lcdButtons = 0;
+        menuSelect(currentTime);
+    } else if (lcdButtons & BUTTON_LEFT) {
+        lcdButtons = 0;
+        menuLeft(currentTime);
+    } else if (lcdButtons & BUTTON_UP) {
+        lcdButtons = 0;
+        menuUp(currentTime);
+    } else if (lcdButtons & BUTTON_RIGHT) {
+        lcdButtons = 0;
+        menuDown(currentTime);
+    } else if (lcdButtons & BUTTON_DOWN) {
+        lcdButtons = 0;
+        menuDown(currentTime);
+    }
+}
 
+void updateLCDState(lcdState_t newState, unsigned long *currentTime) {
+    const char *stateStr;
+
+    if (newState > LCD_ENDSTATE) {
+        newState = LCD_ENDSTATE;
+    }
+
+    if (newState != lcdState) {
+        PRINTTIME(*currentTime);
+        STATE2STRING(lcdState);
+        D("State Change: "); D(stateStr);
+        STATE2STRING(newState);
+        D(" -> "); D(stateStr);
+        D("\n");
+        lcdState = newState;
+    }
+}
+
+void handleLCDState(unsigned long *currentTime) {
+
+    // When a node is active, always go to LCD_RUNNING state unless
+    // interactig with menu
+    if ( (!lcdButtons) && (lcdState != LCD_INMENU) &&
+         (lcdState != LCD_RUNNING) && (currentActive != NULL) ) {
+        updateLCDState(LCD_RUNNING, currentTime);
+    }
+    switch (lcdState) {
+
+        case LCD_ACTIVEWAIT:
+            if (lcdButtons) {
+                monitorMode = false;
+                updateLCDState(LCD_INMENU, currentTime);
+                handleButtonPress(currentTime);
+            } else {
+                if (currentActive != NULL) {
+                    updateLCDState(LCD_RUNNING, currentTime);
+                } else if (timerExpired(currentTime, &lastButtonChange, LCDSLEEPTIME)) {
+                    updateLCDState(LCD_SLEEPWAIT, currentTime);
+                } // else wait more
+            }
+            break;
+
+        case LCD_SLEEPWAIT:
+            monitorMode = false;
+            lcd.setBacklight(0); // OFF
+            if (lcdButtons) {
+                lcd.setBacklight(0x1); // ON
+                lcdButtons = 0; // throw buttons away
+                updateLCDState(LCD_INMENU, currentTime);
+            } else if (currentActive != NULL) {
+                lcd.setBacklight(0x1); // ON
+                updateLCDState(LCD_RUNNING, currentTime);
+            } // else keep sleeping
+            break;
+
+        case LCD_INMENU:
+            if (lcdButtons) {
+                handleButtonPress(currentTime);
+            } else if (timerExpired(currentTime, &lastButtonChange, LCDMENUTIME)) {
+                monitorMode = false;
+                if (currentActive != NULL) {
+                    updateLCDState(LCD_RUNNING, currentTime);
+                } else {
+                    updateLCDState(LCD_ACTIVEWAIT, currentTime);
+                }
+            }
+            break;
+
+        case LCD_RUNNING:
+            if (lcdButtons) {
+                lcdButtons = 0; // throw buttons away
+                updateLCDState(LCD_INMENU, currentTime);
+            } else if (currentActive != NULL) {
+                drawRunning(currentTime, currentActive->node_name);
+            } else {
+                updateLCDState(LCD_ACTIVEWAIT, currentTime);
+            }
+            break;
+
+        case LCD_ENDSTATE:
+        default:
+            monitorMode = false;
+            updateLCDState(LCD_ACTIVEWAIT, currentTime);
+            break;
+    }
 }
 
 #endif // STATEMACHINE_H

@@ -8,15 +8,10 @@
 // Constants used once (to save space)
 #define POLLINTERVAL 25 // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
-#define LCDINTERVAL (STATEINTERVAL+32) // UI can be a bit slower
+#define LCDINTERVAL (STATEINTERVAL+14) // UI can be a bit slower
 #define STATUSINTERVAL 1015 // mainly for debugging / turning LED off
 #define GOODMSGMIN 3 // Minimum number of good messages in...
 #define THRESHOLD 10000 // ..10 second reception threshold, to signal start
-#define MAXNODES 10 // number of nodes to keep track of
-#define NODENAMEMAX 27 // name characters + 1
-#define SERVOPOWERTIME 250 // ms to wait for servo's to power up/down
-#define SERVOMOVETIME 1000 // ms to wait for servo's to move
-#define VACPOWERTIME 2000 // ms to wait for vac to power on
 
 /* constants */
 const int statusLEDPin = 13;
@@ -27,20 +22,31 @@ const int vacPowerControlPin = 9;
 const int servoCenterPW = 368;
 
 /* globals */
-message_t message;
+
+// node state
 nodeInfo_t nodeInfo[MAXNODES];
 nodeInfo_t *currentActive = NULL;
 nodeInfo_t *lastActive = NULL;
+
+// message state
+message_t message;
 boolean blankMessage = true; // Signal not to read from message
 unsigned long lastReception = 0; // millis() since a message was last received
 unsigned long lastStateChange = 0; // last time state was changed
 int signalStrength = 0;
+
+// System State
 vacstate_t actionState = VAC_SERVOPOSTPOWERUP; // make double-sure all ports open
-const char *statusMessage = "\0";
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
-Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
+boolean monitorMode = false; // don't actually move servos / switch vac
+Adafruit_RGBLCDShield lcd;
+Adafruit_PWMServoDriver pwm;
+
+// UI State
+char *lcdBuf[lcdRows][lcdCols+1];
 lcdState_t lcdState;
-uint8_t lcdButtons;
+uint8_t lcdButtons; // Buttons pressed during last lcdEvent()
 unsigned long lastButtonChange; // last time button state changed
+menuEntry_t *currentMenu; // Current entry point in menu
+menuEntryCallback_t currentCallback = (menuEntryCallback_t)NULL; // address of currently running callback
 
 #endif // GLOBALS_H

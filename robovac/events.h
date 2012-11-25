@@ -5,7 +5,7 @@
 void robovacStateEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
 
-    handleActionState(currentTime);
+    handleActionState(&currentTime);
 }
 
 void pollRxEvent(TimerInformation *Sender) {
@@ -54,7 +54,8 @@ void lcdEvent(TimerInformation *Sender) {
         lastButtonChange = currentTime;
         lcdButtons = new_buttons;
     }
-    handleLCDState(currentTime);
+    // Clears lcdButtons that were handled
+    handleLCDState(&currentTime);
 }
 
 #endif // EVENTS_H

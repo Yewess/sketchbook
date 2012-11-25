@@ -2,18 +2,22 @@
 #define CONTROL_H
 
 void servoControl(boolean turnOn) {
-    if (turnOn == true) {
-        digitalWrite(servoPowerControlPin, HIGH);
-    } else {
-        digitalWrite(servoPowerControlPin, LOW);
+    if (!monitorMode) {
+        if (turnOn == true) {
+            digitalWrite(servoPowerControlPin, HIGH);
+        } else {
+            digitalWrite(servoPowerControlPin, LOW);
+        }
     }
 }
 
 void vacControl(boolean turnOn) {
-    if (turnOn == true) {
-        digitalWrite(vacPowerControlPin, HIGH);
-    } else {
-        digitalWrite(servoPowerControlPin, LOW);
+    if (!monitorMode) {
+        if (turnOn == true) {
+            digitalWrite(vacPowerControlPin, HIGH);
+        } else {
+            digitalWrite(servoPowerControlPin, LOW);
+        }
     }
 }
 
