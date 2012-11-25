@@ -18,34 +18,34 @@ void updateNodes(unsigned long *currentTime) {
         nodeInfo[nodeCount].receive_count += nodeInfo[nodeCount].new_count;
         if (nodeInfo[nodeCount].receive_count >= max_count) {
             nodeInfo[nodeCount].receive_count = max_count;
-            PRINTTIME(currentTime);
-            D("Clipped node_id "); D(nodeInfo[nodeCount].node_id);
-            D(" receive_count to "); D(max_count);
+            PRINTTIME(*currentTime);
+            D("Clip "); D(nodeInfo[nodeCount].node_id);
+            D(" recv_count "); D(max_count);
             D("\n");
         }
 
         // for every (THRESHOLD/GOODMSGMIN) over, reduce count by one
         if (nodeInfo[nodeCount].receive_count > expired_count) {
             nodeInfo[nodeCount].receive_count -= expired_count;
-            PRINTTIME(currentTime);
-            D("Reduced node_id "); D(nodeInfo[nodeCount].node_id);
-            D(" receive_count by "); D(expired_count);
+            PRINTTIME(*currentTime);
+            D("Reduce "); D(nodeInfo[nodeCount].node_id);
+            D(" recv_count "); D(expired_count);
             D("\n");
 
         } else {
             nodeInfo[nodeCount].receive_count = 0; // expired_count was bigger
-            PRINTTIME(currentTime);
-            D("Reduced node_id "); D(nodeInfo[nodeCount].node_id);
-            D(" receive_count to 0");
+            PRINTTIME(*currentTime);
+            D("Reduce "); D(nodeInfo[nodeCount].node_id);
+            D(" recv_count 0");
             D("\n");
         }
 
-        // Any nodes w/o a receive_count loose last_heard
+        // Any nodes w/o a receive_count lose last_heard
         if (nodeInfo[nodeCount].receive_count == 0) {
             nodeInfo[nodeCount].last_heard = 0;
-            PRINTTIME(currentTime);
-            D("Clipped node_id "); D(nodeInfo[nodeCount].node_id);
-            D(" last_heard to 0");
+            PRINTTIME(*currentTime);
+            D("Clip "); D(nodeInfo[nodeCount].node_id);
+            D(" last_hrd 0");
             D("\n");
         }
     }
@@ -62,9 +62,9 @@ nodeInfo_t *activeNode(unsigned long *currentTime) {
                 if (nodeInfo[nodeCount].last_heard > result->last_heard) {
                     PRINTMESSAGE(*currentTime, message, signalStrength);
                     PRINTTIME(*currentTime);
-                    D("Warning: Node ");
+                    D("Node ");
                     D(nodeInfo[nodeCount].node_id);
-                    D(" is competing with node ");
+                    D(" competing with ");
                     D(result->node_id);
                     D("\n");
                     result = &nodeInfo[nodeCount];
@@ -105,7 +105,7 @@ void setupNodeInfo(void) {
         }
     }
 }
-
+/*
 void printNodeInfo(int index) {
         D("Node Name: '"); D(nodeInfo[index].node_name);
         D("'");
@@ -122,15 +122,13 @@ void printNodes(void) {
 #ifdef DEBUG
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
         printNodeInfo(nodeCount);
-        D("^@");
+        D("\n");
     }
 #endif
 }
-
+*/
 void readNodeIDServoMap(void) {
     int address = 0;
-
-    D("Reading nodeInfo from EEPROM");
 
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
 
@@ -189,8 +187,6 @@ void writeNodeIDServoMap(void) {
     int address = 0;
     byte currentByte = 0;
     word currentWord = 0;
-
-    D("Writing nodeInfo to EEPROM");
 
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
 

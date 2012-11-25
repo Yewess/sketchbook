@@ -1,6 +1,7 @@
 #ifndef STATEMACHINE_H
 #define STATEMACHINE_H
 
+#include "lcd.h"
 #include "menu.h"
 
 void updateState(vacstate_t newState, unsigned long *currentTime) {
@@ -13,9 +14,9 @@ void updateState(vacstate_t newState, unsigned long *currentTime) {
     if (newState != actionState) {
         PRINTMESSAGE(*currentTime, message, signalStrength);
         PRINTTIME(*currentTime);
-        STATE2STRING(actionState);
-        D("State Change: "); D(stateStr);
-        STATE2STRING(newState);
+        STATE2STRING(stateStr, actionState);
+        D("State: "); D(stateStr);
+        STATE2STRING(stateStr, newState);
         D(" -> "); D(stateStr);
         D("\n");
         actionState = newState;
@@ -161,7 +162,7 @@ void handleButtonPress(unsigned long *currentTime) {
         menuUp(currentTime);
     } else if (lcdButtons & BUTTON_RIGHT) {
         lcdButtons = 0;
-        menuDown(currentTime);
+        menuRight(currentTime);
     } else if (lcdButtons & BUTTON_DOWN) {
         lcdButtons = 0;
         menuDown(currentTime);
@@ -177,9 +178,9 @@ void updateLCDState(lcdState_t newState, unsigned long *currentTime) {
 
     if (newState != lcdState) {
         PRINTTIME(*currentTime);
-        STATE2STRING(lcdState);
-        D("State Change: "); D(stateStr);
-        STATE2STRING(newState);
+        LCDSTATE2STRING(stateStr,lcdState);
+        D("State: "); D(stateStr);
+        LCDSTATE2STRING(stateStr,newState);
         D(" -> "); D(stateStr);
         D("\n");
         lcdState = newState;
@@ -188,12 +189,9 @@ void updateLCDState(lcdState_t newState, unsigned long *currentTime) {
 
 void handleLCDState(unsigned long *currentTime) {
 
-    // When a node is active, always go to LCD_RUNNING state unless
-    // interactig with menu
-    if ( (!lcdButtons) && (lcdState != LCD_INMENU) &&
-         (lcdState != LCD_RUNNING) && (currentActive != NULL) ) {
-        updateLCDState(LCD_RUNNING, currentTime);
-    }
+    // Give some runtime to callback (if any)
+    handleCallback(currentTime);
+
     switch (lcdState) {
 
         case LCD_ACTIVEWAIT:
@@ -220,7 +218,9 @@ void handleLCDState(unsigned long *currentTime) {
             } else if (currentActive != NULL) {
                 lcd.setBacklight(0x1); // ON
                 updateLCDState(LCD_RUNNING, currentTime);
-            } // else keep sleeping
+            } else {
+                //D("Zzz ");
+            }
             break;
 
         case LCD_INMENU:
@@ -251,6 +251,7 @@ void handleLCDState(unsigned long *currentTime) {
         default:
             monitorMode = false;
             updateLCDState(LCD_ACTIVEWAIT, currentTime);
+            drawMenu();
             break;
     }
 }

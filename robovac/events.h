@@ -26,11 +26,11 @@ void pollRxEvent(TimerInformation *Sender) {
                     D("Bad CRC ");
                 }
                 if (validMessage(&message) == false) {
-                    D("Invalid message ");
+                    D("Inv. msg ");
                 }
                 if (findNode(message.node_id) == NULL) {
-                    D("Invalid node_id ");
-                    D(message.node_id)
+                    D("Inv. node_id ");
+                    D(message.node_id);
                 }
                 D("\n");
         } else { // Good message

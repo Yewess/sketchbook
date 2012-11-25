@@ -2,8 +2,8 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#include <Arduino.h>
 /* Definitions */
-#define DEBUG // undefine to turn off all serial output
 
 // Constants used once (to save space)
 #define POLLINTERVAL 25 // @ 300 baud, takes 100ms to receive 30 bytes
@@ -38,15 +38,17 @@ int signalStrength = 0;
 // System State
 vacstate_t actionState = VAC_SERVOPOSTPOWERUP; // make double-sure all ports open
 boolean monitorMode = false; // don't actually move servos / switch vac
-Adafruit_RGBLCDShield lcd;
-Adafruit_PWMServoDriver pwm;
 
 // UI State
-char *lcdBuf[lcdRows][lcdCols+1];
+char lcdBuf[lcdRows][lcdCols+1] = {'\0'};
 lcdState_t lcdState;
 uint8_t lcdButtons; // Buttons pressed during last lcdEvent()
 unsigned long lastButtonChange; // last time button state changed
 menuEntry_t *currentMenu; // Current entry point in menu
-menuEntryCallback_t currentCallback = (menuEntryCallback_t)NULL; // address of currently running callback
+menuEntryCallback_t currentCallback = NULL; // address of currently running callback
+
+// I2C Device init.
+Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 
 #endif // GLOBALS_H

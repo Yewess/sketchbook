@@ -41,26 +41,26 @@
 #define MENU_H
 
 #include <RoboVac.h>
+#include "statemachine.h"
 #include "lcd.h"
 
 // Main Menu
-menuEntry_t n_root = {"Main Menu"}; // n = node
+menuEntry_t n_root = {"Main Menu "}; // n = node
 menuEntry_t m_setup = {"Setup..."}; // m = menu
 menuEntry_t m_man = {"Manual Cntrol..."};
 menuEntry_t n_mon = {"Monitor..."};
 
 // Setup menu
-menuEntry_t n_setup = {"Setup Menu"};
+menuEntry_t n_setup = {"Setup Menu "};
 menuEntry_t n_port =   {"Port/ID Setup..."};
 menuEntry_t n_travel = {"Travel Adjust..."};
 
 // Manual Control
-menuEntry_t n_manc = {"Manual Control"};
+menuEntry_t n_manc = {"Manual Control "};
 menuEntry_t n_portt = {"Port Toggle..."};
 menuEntry_t n_vact = {"Vacuum Toggle..."};
 
 void menuSetup(void) {
-    currentMenu = &n_root;
 
     // Main Menu
     n_root.next_sibling = &m_setup;
@@ -70,8 +70,8 @@ void menuSetup(void) {
     m_man.prev_sibling = &m_setup;
     n_mon.prev_sibling = &m_man;
 
-    m_setup.child = &n_setup;
-    m_man.child = &n_manc;
+    m_setup.child = &n_port;
+    m_man.child = &n_portt;
     // monitor is a node w/ callback
 
     // Setup menu
@@ -93,76 +93,81 @@ void menuSetup(void) {
     n_portt.callback = portToggleCallback;
     n_vact.callback = vacToggleCallback;
 
-
     currentCallback = NULL;
-    currentMenu = &n_root;
+    currentMenu = &m_setup;
     lastButtonChange = millis();
     lcdButtons = 0;
-    lcdState = LCD_ACTIVEWAIT;
-    drawMenu();
+    lcdState = LCD_ENDSTATE;
 }
 
 void menuUp(unsigned long *currentTime) {
+    D("U\n");
     if (!currentCallback) {
         if (currentMenu->prev_sibling) {
             currentMenu = currentMenu->prev_sibling;
             drawMenu();
         } else {
-            blinkBacklight(currentTime, BUTTON_UP);
+            currentCallback = blinkBacklight;
         }
     } else { // in a callback, pass button through
-        currentCallback(currentTime, BUTTON_UP);
+        handleCallback(currentTime);
     }
 }
 
 void menuDown(unsigned long *currentTime) {
+    D("D\n");
     if (!currentCallback) {
         if (currentMenu->next_sibling) {
             currentMenu = currentMenu->next_sibling;
             drawMenu();
         } else {
-            blinkBacklight(currentTime, BUTTON_DOWN);
+            currentCallback = blinkBacklight;
         }
+    } else {
+        handleCallback(currentTime);
     }
 }
 
 void menuLeft(unsigned long *currentTime) {
+    D("L\n");
     if (!currentCallback) {
-        currentMenu = &n_root;
+        currentMenu = &m_setup;
         drawMenu();
     } else { // in a callback, pass through new button
-        currentCallback(currentTime, BUTTON_LEFT);
+        handleCallback(currentTime);
     }
 }
 
 void menuRight(unsigned long *currentTime) {
+    D("R\n");
     if (!currentCallback) {
         if (currentMenu->child) {
             currentMenu = currentMenu->child;
             drawMenu();
         } else if (currentMenu->callback) {
             currentCallback = currentMenu->callback;
-            currentCallback(currentTime, 0);
+            handleCallback(currentTime);
         } else { // can't go right, can't do callback
             currentCallback = blinkBacklight;
-            currentCallback(currentTime, BUTTON_RIGHT);
+            handleCallback(currentTime);
         }
     } else { // in a callback, pass through new button
-        currentCallback(currentTime, BUTTON_RIGHT);
+        handleCallback(currentTime);
     }
 }
 
 void menuSelect(unsigned long *currentTime) {
+    D("S\n");
     if (!currentCallback) { // Not currently inside a callback
         if (currentMenu->callback) {
             currentCallback = currentMenu->callback;
-            currentCallback(currentTime, 0);
+            handleCallback(currentTime);
         } else {
             // item has no callback, behave like menuRight
             menuRight(currentTime);
         }
     } else { // in a callback, pass through new button
-        currentCallback(currentTime, BUTTON_SELECT);
+        handleCallback(currentTime);
     }
 }
 
