@@ -45,3 +45,21 @@ boolean validMessage(const message_t *message) {
         return false;
     }
 }
+
+const unsigned long *timerExpired(const unsigned long *currentTime,
+                                  const unsigned long *lastTime,
+                                  unsigned int interval) {
+    static unsigned long elapsedTime=0;
+
+    if (*currentTime < *lastTime) { // currentTime has wrapped
+        elapsedTime = ((unsigned long)-1) - *lastTime;
+        elapsedTime += *currentTime;
+    } else { // no wrap
+        elapsedTime = *currentTime - *lastTime;
+    }
+    if (elapsedTime >= interval) {
+        return &elapsedTime;
+    } else {
+        return (unsigned long *) NULL;
+    }
+}

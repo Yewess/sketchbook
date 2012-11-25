@@ -31,6 +31,20 @@
 #define RXTXBAUD 300 // Rf Baud
 #define SERIALBAUD 9600
 #define NODENAMEMAX 27 // name characters + 1
+#define MAXNODES 16 // number of nodes to keep track of
+#define NODENAMEMAX (lcdCols + 1) // name characters + 1
+#define SERVOPOWERTIME ((unsigned int) 250) // ms to wait for servo's to power up/down
+#define SERVOMOVETIME ((unsigned int) 1000) // ms to wait for servo's to move
+#define VACPOWERTIME ((unsigned int) 2000) // ms to wait for vac to power on
+#define LCDSLEEPTIME ((unsigned int) 180000) // ms to sleep if no activity
+#define LCDMENUTIME ((unsigned int) 30000) // ms before menu activity times out
+#define LCDBLINKTIME ((unsigned int) 100) // ms to turn backlight off during blink
+#define LCDRARROW (B01111110) // right arrow character
+#define LCDLARROW (B01111111) // left arrow character
+
+// constants
+const int lcdRows = 2;
+const int lcdCols = 16;
 
 // Macros
 #define STATE2CASE(STATE) case STATE: stateStr = #STATE; break;
@@ -100,8 +114,8 @@ typedef struct nodeInfo_s {
     byte port_id; // servo node_id is mapped to
     word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
     word servo_max; // maximum limit of travel
-    unsigned char receive_count; // number of messages received in THRESHOLD
-    unsigned char new_count; // messages just received
+    unsigned int receive_count; // number of messages received in THRESHOLD
+    unsigned int new_count; // messages just received
     unsigned long last_heard; // timestamp last message was received
     char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
@@ -121,11 +135,10 @@ typedef enum vacstate_e {
 } vacstate_t;
 
 typedef enum lcdState_e {
-    LCD_STARTUP, // Splash Screen
-    LCD_ACTIVEWAIT, // Backlight on, waiting
-    LCD_SLEEPWAIT, // Backlight off, waiting
-    LCD_MENU, // Backlight on, config. menu
-    LCD_RUNNING, // Backlight on, vacuuming
+    LCD_ACTIVEWAIT, // Backlight on, waiting for buttons
+    LCD_SLEEPWAIT, // Backlight off, waiting for buttons
+    LCD_INMENU, // Backlight on, keep out of running menu
+    LCD_RUNNING, // Backlight on, vacuuming, waiting for buttons
     LCD_ENDSTATE, // Go back to LCD_ACTIVEWAIT
 } lcdState_t;
 
@@ -136,10 +149,27 @@ typedef struct message_s {
     unsigned long up_time; // number of miliseconds running
 } message_t;
 
+
+typedef void (*menuEntryCallback_t)(unsigned long *currentTime, uint8_t buttons);
+
+struct menuEntry_s {
+    const char name[lcdCols+1];
+    struct menuEntry_s *child;
+    struct menuEntry_s *prev_sibling;
+    struct menuEntry_s *next_sibling;
+    menuEntryCallback_t callback;
+};
+
+typedef struct menuEntry_s menuEntry_t;
+
 void makeMessage(message_t *message, byte nodeID);
 
 void copyMessage(message_t *destination, const message_t *source);
 
 boolean validMessage(const message_t *message);
+
+const unsigned long *timerExpired(const unsigned long *currentTime,
+                                  const unsigned long *lastTime,
+                                  unsigned int interval);
 
 #endif // ROBOVAC_H
