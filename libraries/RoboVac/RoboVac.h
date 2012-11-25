@@ -29,9 +29,9 @@
 #define MESSAGESIZE sizeof(message_t)
 #define TXINTERVAL 1002 // Miliseconds between transmits
 #define RXTXBAUD 300 // Rf Baud
-#define SERIALBAUD 9600
+#define SERIALBAUD 115200
 #define NODENAMEMAX 27 // name characters + 1
-#define MAXNODES 16 // number of nodes to keep track of
+#define MAXNODES 6 // number of nodes to keep track of
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1
 #define SERVOPOWERTIME ((unsigned int) 250) // ms to wait for servo's to power up/down
 #define SERVOMOVETIME ((unsigned int) 1000) // ms to wait for servo's to move
@@ -39,7 +39,7 @@
 #define LCDSLEEPTIME ((unsigned int) 180000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned int) 30000) // ms before menu activity times out
 #define LCDBLINKTIME ((unsigned int) 100) // ms to turn backlight off during blink
-#define LCDRARROW (B01111110) // right arrow character
+#define LCDRARROW (B01111110) //  right arrow character
 #define LCDLARROW (B01111111) // left arrow character
 
 // constants
@@ -47,22 +47,33 @@ const int lcdRows = 2;
 const int lcdCols = 16;
 
 // Macros
-#define STATE2CASE(STATE) case STATE: stateStr = #STATE; break;
+#define STATE2CASE(VAR, STATE) case STATE: VAR = #STATE; break;
 
-#define STATE2STRING(STATE) {\
+#define STATE2STRING(VAR, STATE) {\
     switch (STATE) {\
-        STATE2CASE(VAC_LISTENING)\
-        STATE2CASE(VAC_VACPOWERUP)\
-        STATE2CASE(VAC_SERVOPOWERUP)\
-        STATE2CASE(VAC_SERVOACTION)\
-        STATE2CASE(VAC_SERVOPOWERDN)\
-        STATE2CASE(VAC_VACUUMING)\
-        STATE2CASE(VAC_VACPOWERDN)\
-        STATE2CASE(VAC_SERVOPOSTPOWERUP)\
-        STATE2CASE(VAC_SERVOSTANDBY)\
-        STATE2CASE(VAC_SERVOPOSTPOWERDN)\
-        STATE2CASE(VAC_ENDSTATE)\
-        default: stateStr = "MISSING STATE!!!\0"; break;\
+        STATE2CASE(VAR, VAC_LISTENING)\
+        STATE2CASE(VAR, VAC_VACPOWERUP)\
+        STATE2CASE(VAR, VAC_SERVOPOWERUP)\
+        STATE2CASE(VAR, VAC_SERVOACTION)\
+        STATE2CASE(VAR, VAC_SERVOPOWERDN)\
+        STATE2CASE(VAR, VAC_VACUUMING)\
+        STATE2CASE(VAR, VAC_VACPOWERDN)\
+        STATE2CASE(VAR, VAC_SERVOPOSTPOWERUP)\
+        STATE2CASE(VAR, VAC_SERVOSTANDBY)\
+        STATE2CASE(VAR, VAC_SERVOPOSTPOWERDN)\
+        STATE2CASE(VAR, VAC_ENDSTATE)\
+        default: VAR = "MISSING STATE!!!\0"; break;\
+    }\
+}
+
+#define LCDSTATE2STRING(VAR, STATE) {\
+    switch (STATE) {\
+        STATE2CASE(VAR, LCD_ACTIVEWAIT)\
+        STATE2CASE(VAR, LCD_SLEEPWAIT)\
+        STATE2CASE(VAR, LCD_INMENU)\
+        STATE2CASE(VAR, LCD_RUNNING)\
+        STATE2CASE(VAR, LCD_ENDSTATE)\
+        default: VAR = "MISSING STATE!!!\0"; break;\
     }\
 }
 
@@ -71,6 +82,9 @@ const int lcdCols = 16;
 #else
 #define D(...) {;;}
 #endif // DEBUG
+
+#define SP(...) Serial.print(__VA_ARGS__)
+#define STOP while (1) {}
 
 #ifdef DEBUG
 #define PRINTTIME(MILLIS) {\
@@ -150,10 +164,11 @@ typedef struct message_s {
 } message_t;
 
 
-typedef void (*menuEntryCallback_t)(unsigned long *currentTime, uint8_t buttons);
+// Returns true when finished, false if still running
+typedef boolean (*menuEntryCallback_t)(unsigned long *currentTime);
 
 struct menuEntry_s {
-    const char name[lcdCols+1];
+    const char name[lcdCols+1]; // Extra space for NULL
     struct menuEntry_s *child;
     struct menuEntry_s *prev_sibling;
     struct menuEntry_s *next_sibling;
