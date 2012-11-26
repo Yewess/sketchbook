@@ -42,6 +42,7 @@
 #include "nodeinfo.h"
 #include "statemachine.h"
 #include "events.h"
+#include "callbacks.h"
 #include "lcd.h"
 #include "menu.h"
 
