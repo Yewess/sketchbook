@@ -12,7 +12,6 @@ void updateState(vacstate_t newState, unsigned long *currentTime) {
     }
 
     if (newState != actionState) {
-        PRINTMESSAGE(*currentTime, message, signalStrength);
         PRINTTIME(*currentTime);
         STATE2STRING(stateStr, actionState);
         D("State: "); D(stateStr);
@@ -31,7 +30,7 @@ void handleActionState(unsigned long *currentTime) {
 
         case VAC_LISTENING:
             // The only place lastActive is updated
-            lastActive = currentActive = activeNode(currentTime);
+            lastActive = currentActive = activeNode(currentTime);;
             if (currentActive != NULL) {
                 updateState(VAC_VACPOWERUP, currentTime);
             }
@@ -228,9 +227,9 @@ void handleLCDState(unsigned long *currentTime) {
                 handleButtonPress(currentTime);
             } else if (timerExpired(currentTime, &lastButtonChange, LCDMENUTIME)) {
                 monitorMode = false;
-                if (currentActive != NULL) {
+                if (currentActive != NULL) { // VACUUMING
                     updateLCDState(LCD_RUNNING, currentTime);
-                } else {
+                } else { // Not Vacuuming
                     updateLCDState(LCD_ACTIVEWAIT, currentTime);
                 }
             }
@@ -240,9 +239,9 @@ void handleLCDState(unsigned long *currentTime) {
             if (lcdButtons) {
                 lcdButtons = 0; // throw buttons away
                 updateLCDState(LCD_INMENU, currentTime);
-            } else if (currentActive != NULL) {
+            } else if (currentActive != NULL) { // VACUUMING
                 drawRunning(currentTime, currentActive->node_name);
-            } else {
+            } else { // Not Vacuuming
                 updateLCDState(LCD_ACTIVEWAIT, currentTime);
             }
             break;
