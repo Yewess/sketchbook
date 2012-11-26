@@ -65,9 +65,9 @@ void setup() {
     vw_rx_start();
 
     // Setup events
-    //TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
-    //TimedEvent.addTimer(STATEINTERVAL, robovacStateEvent);
-    //TimedEvent.addTimer(STATUSINTERVAL, statusEvent);
+    TimedEvent.addTimer(POLLINTERVAL, pollRxEvent);
+    TimedEvent.addTimer(STATEINTERVAL, robovacStateEvent);
+    TimedEvent.addTimer(STATUSINTERVAL, statusEvent);
     TimedEvent.addTimer(LCDINTERVAL, lcdEvent);
 
     // Setup state machine
@@ -78,9 +78,24 @@ void setup() {
 
     // Load stored data
     readNodeIDServoMap();
+#ifdef DEBUG
+    for (byte n=0; n<MAXNODES; n++) {
+        nodeInfo[n].node_id = n;
+        nodeInfo[n].port_id = n+1;
+        nodeInfo[n].servo_min = 300 - n;
+        nodeInfo[n].servo_max = 400 + n;
+        strcpy(nodeInfo[n].node_name, "Test Node  ");
+        nodeInfo[n].node_name[10] = n + 48;
+    }
 
+    nodeInfo[1].node_id = 7;
+    nodeInfo[1].port_id = 3;
+    nodeInfo[1].servo_min = 300;
+    nodeInfo[1].servo_max = 400;
+    strcpy(nodeInfo[1].node_name, "Test Node 7");
+#endif // DEBUG
     // Debugging info.
-    //printNodes();
+    printNodes();
 
     // set up the LCD's number of columns and rows
     // and pwm servo board
