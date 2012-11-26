@@ -10,8 +10,8 @@
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
 #define LCDINTERVAL (STATEINTERVAL+14) // UI can be a bit slower
 #define STATUSINTERVAL 1015 // mainly for debugging / turning LED off
-#define GOODMSGMIN 3 // Minimum number of good messages in...
-#define THRESHOLD 10000 // ..10 second reception threshold, to signal start
+#define GOODMSGMIN 2 // Minimum number of good messages in...
+#define THRESHOLD 6000 // ..6 second reception threshold, to signal start
 
 /* constants */
 const int statusLEDPin = 13;
@@ -30,8 +30,6 @@ nodeInfo_t *lastActive = NULL;
 
 // message state
 message_t message;
-boolean blankMessage = true; // Signal not to read from message
-unsigned long lastReception = 0; // millis() since a message was last received
 unsigned long lastStateChange = 0; // last time state was changed
 int signalStrength = 0;
 

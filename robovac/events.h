@@ -4,8 +4,8 @@
 
 void robovacStateEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
-
-    handleActionState(&currentTime);
+    updateNodes(&currentTime);
+    //handleActionState(&currentTime);
 }
 
 void pollRxEvent(TimerInformation *Sender) {
@@ -13,36 +13,23 @@ void pollRxEvent(TimerInformation *Sender) {
     uint8_t buffLen = sizeof(message_t);
     uint8_t *messageBuff = (uint8_t *) &message;
     unsigned long currentTime = millis();
+    nodeInfo_t *node;
 
     signalStrength = analogRead(signalStrengthPin);
     if (vw_have_message()) {
         digitalWrite(statusLEDPin, HIGH);
         CRCGood = vw_get_message(messageBuff, &buffLen);
-        if ( (CRCGood == false) || (validMessage(&message) == false)
-                                || (findNode(message.node_id) == NULL) ) {
-                blankMessage = true;
-                PRINTMESSAGE(millis(), message, signalStrength);
-                if (CRCGood == false) {
-                    D("Bad CRC ");
-                }
-                if (validMessage(&message) == false) {
-                    D("Inv. msg ");
-                }
-                if (findNode(message.node_id) == NULL) {
-                    D("Inv. node_id ");
-                    D(message.node_id);
-                }
-                D("\n");
-        } else { // Good message
-            blankMessage = false;
-            lastReception = currentTime;
+        node = findNode(message.node_id);
+        if ( CRCGood && validMessage(&message) && node ) {
+            node->last_heard = currentTime;
+            node->receive_count = node->receive_count + 1;
         }
     }
 }
 
 void statusEvent(TimerInformation *Sender) {
-    PRINTMESSAGE(millis(), message, signalStrength);
     digitalWrite(statusLEDPin, LOW);
+    printNodes();
 }
 
 void lcdEvent(TimerInformation *Sender) {

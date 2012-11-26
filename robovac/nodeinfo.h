@@ -3,50 +3,59 @@
 
 #include <RoboVac.h>
 
+// keep receive_count updated for all nodes
 void updateNodes(unsigned long *currentTime) {
-    // keep receive_count updated for all nodes
+    unsigned long elapsedTime;
+    int expired_count;
+    int max_count = (THRESHOLD/TXINTERVAL);
+    nodeInfo_t *node;
 
-    // for each node, update receive_count by new_count w/in THRESHOLD
-    for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        const unsigned long *elapsedTime = timerExpired(currentTime,
-                                                        &nodeInfo[nodeCount].last_heard,
-                                                        1);
-        unsigned int max_count = int(THRESHOLD)/int(TXINTERVAL);
-        unsigned int expired_count = *elapsedTime % (int(THRESHOLD)/int(GOODMSGMIN));
+    // for each node, update receive_count to last max_count w/in THRESHOLD
+    for (byte nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
 
-        // increase rate is capped by max transmit rate during threshold
-        nodeInfo[nodeCount].receive_count += nodeInfo[nodeCount].new_count;
-        if (nodeInfo[nodeCount].receive_count >= max_count) {
-            nodeInfo[nodeCount].receive_count = max_count;
-            PRINTTIME(*currentTime);
-            D("Clip "); D(nodeInfo[nodeCount].node_id);
-            D(" recv_count "); D(max_count);
-            D("\n");
+        node = &(nodeInfo[nodeCount]);
+
+        // don't bother with nodes having no messages or last_heard
+        if ( (node->receive_count == 0) ||
+             (node->last_heard == 0 )) {
+            node->receive_count = 0;
+            node->last_heard = 0;
+            continue;
         }
 
-        // for every (THRESHOLD/GOODMSGMIN) over, reduce count by one
-        if (nodeInfo[nodeCount].receive_count > expired_count) {
-            nodeInfo[nodeCount].receive_count -= expired_count;
-            PRINTTIME(*currentTime);
-            D("Reduce "); D(nodeInfo[nodeCount].node_id);
-            D(" recv_count "); D(expired_count);
-            D("\n");
-
-        } else {
-            nodeInfo[nodeCount].receive_count = 0; // expired_count was bigger
-            PRINTTIME(*currentTime);
-            D("Reduce "); D(nodeInfo[nodeCount].node_id);
-            D(" recv_count 0");
-            D("\n");
+        // check if millis() wrapped around
+        if ( *currentTime < node->last_heard ) {
+            elapsedTime = ((unsigned long)-1) - node->last_heard;
+            elapsedTime += *currentTime;
+        } else { // no wrap
+            elapsedTime = *currentTime - node->last_heard;
         }
 
+        if (elapsedTime > THRESHOLD) {
+            // For every ms over THRESHOLD taken to receive minimum message
+            // not less than 0
+            expired_count = constrain(
+                (elapsedTime - THRESHOLD) / (THRESHOLD / GOODMSGMIN),
+                0,
+                max_count);
+            if (node->receive_count >= expired_count) {
+                node->receive_count = max_count - expired_count;
+            } else {
+                node->receive_count = 0;
+            }
+        }
+
+        // Clip top
+        node->receive_count = constrain(
+                        node->receive_count,
+                        0,
+                        int(THRESHOLD)/int(TXINTERVAL));
+
+        // Nodes not heard from in 10x threshold get zerod last_heard
         // Any nodes w/o a receive_count lose last_heard
-        if (nodeInfo[nodeCount].receive_count == 0) {
-            nodeInfo[nodeCount].last_heard = 0;
-            PRINTTIME(*currentTime);
-            D("Clip "); D(nodeInfo[nodeCount].node_id);
-            D(" last_hrd 0");
-            D("\n");
+        if (elapsedTime > (THRESHOLD * 10)) {
+            node->last_heard = 0;
+            node->receive_count = 0;
         }
     }
 }
@@ -60,11 +69,10 @@ nodeInfo_t *activeNode(unsigned long *currentTime) {
         if (nodeInfo[nodeCount].receive_count >= GOODMSGMIN) {
             if (result != NULL) { // most recent wins
                 if (nodeInfo[nodeCount].last_heard > result->last_heard) {
-                    PRINTMESSAGE(*currentTime, message, signalStrength);
                     PRINTTIME(*currentTime);
                     D("Node ");
                     D(nodeInfo[nodeCount].node_id);
-                    D(" competing with ");
+                    D(" compete w/ ");
                     D(result->node_id);
                     D("\n");
                     result = &nodeInfo[nodeCount];
@@ -78,17 +86,15 @@ nodeInfo_t *activeNode(unsigned long *currentTime) {
 }
 
 nodeInfo_t *findNode(byte node_id) {
-    nodeInfo_t *result = NULL;
-
     // filter out invalid IDs
     if ((node_id != 255) && (node_id != 0)) {
-        for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+        for (byte nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
             if (nodeInfo[nodeCount].node_id == node_id) {
-                result == &nodeInfo[nodeCount];
+                return &(nodeInfo[nodeCount]);
             }
         }
     }
-    return result;
+    return NULL;
 }
 
 void setupNodeInfo(void) {
@@ -98,35 +104,34 @@ void setupNodeInfo(void) {
         nodeInfo[nodeCount].servo_min = servoCenterPW;
         nodeInfo[nodeCount].servo_max = servoCenterPW;
         nodeInfo[nodeCount].receive_count = 0;
-        nodeInfo[nodeCount].new_count = 0;
-        nodeInfo[nodeCount].last_heard =0;
+        nodeInfo[nodeCount].last_heard = 0;
         for (int nameChar=0; nameChar < (NODENAMEMAX); nameChar++) {
             nodeInfo[nodeCount].node_name[nameChar] = '\0';
         }
     }
 }
-/*
-void printNodeInfo(int index) {
-        D("Node Name: '"); D(nodeInfo[index].node_name);
-        D("'");
-        D(" Node ID: "); D(nodeInfo[index].node_id);
-        D(" Port ID: "); D(nodeInfo[index].port_id);
-        D(" Servo Min: "); D(nodeInfo[index].servo_min);
-        D(" Servo Max: "); D(nodeInfo[index].servo_max);
-        D(" Messags: "); D(nodeInfo[index].receive_count);
-        D(" + Mesgs: "); D(nodeInfo[index].new_count);
-        D(" last ms: "); D(nodeInfo[index].last_heard);
+
+
+void printNodeInfo(nodeInfo_t *node) {
+        D(node->node_name);
+        D(" #: "); D(node->node_id);
+        D(" Port: "); D(node->port_id);
+        D(" Min: "); D(node->servo_min);
+        D(" Max: "); D(node->servo_max);
+        D(" Msgs: "); D(node->receive_count);
+        D(" last ms: "); D(node->last_heard);
+        D("\n");
 }
 
 void printNodes(void) {
-#ifdef DEBUG
-    for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        printNodeInfo(nodeCount);
-        D("\n");
+    for (byte nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+        if (nodeInfo[nodeCount].last_heard > 0) {
+            printNodeInfo(&(nodeInfo[nodeCount]));
+        }
     }
-#endif
 }
-*/
+
+
 void readNodeIDServoMap(void) {
     int address = 0;
 

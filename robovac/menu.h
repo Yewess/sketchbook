@@ -41,6 +41,7 @@
 #define MENU_H
 
 #include <RoboVac.h>
+#include "callbacks.h"
 #include "statemachine.h"
 #include "lcd.h"
 
@@ -101,7 +102,6 @@ void menuSetup(void) {
 }
 
 void menuUp(unsigned long *currentTime) {
-    D("U\n");
     if (!currentCallback) {
         if (currentMenu->prev_sibling) {
             currentMenu = currentMenu->prev_sibling;
@@ -115,7 +115,6 @@ void menuUp(unsigned long *currentTime) {
 }
 
 void menuDown(unsigned long *currentTime) {
-    D("D\n");
     if (!currentCallback) {
         if (currentMenu->next_sibling) {
             currentMenu = currentMenu->next_sibling;
@@ -129,7 +128,6 @@ void menuDown(unsigned long *currentTime) {
 }
 
 void menuLeft(unsigned long *currentTime) {
-    D("L\n");
     if (!currentCallback) {
         currentMenu = &m_setup;
         drawMenu();
@@ -139,7 +137,6 @@ void menuLeft(unsigned long *currentTime) {
 }
 
 void menuRight(unsigned long *currentTime) {
-    D("R\n");
     if (!currentCallback) {
         if (currentMenu->child) {
             currentMenu = currentMenu->child;
@@ -157,7 +154,6 @@ void menuRight(unsigned long *currentTime) {
 }
 
 void menuSelect(unsigned long *currentTime) {
-    D("S\n");
     if (!currentCallback) { // Not currently inside a callback
         if (currentMenu->callback) {
             currentCallback = currentMenu->callback;
