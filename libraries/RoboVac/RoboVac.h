@@ -110,9 +110,7 @@ const int lcdCols = 16;
 #ifdef DEBUG
 #define PRINTMESSAGE(CURRENTTIME, MESSAGE, SIGSTREN) {\
     PRINTTIME(CURRENTTIME);\
-    D("Message:");\
-    D(" Magic: 0x"); D(message.magic, HEX);\
-    D(" Version: "); D(message.version);\
+    D("Msg:");\
     D(" node ID: "); D(message.node_id);\
     D(" Uptime: ");\
     D(message.up_time); D("ms ");\
@@ -129,7 +127,6 @@ typedef struct nodeInfo_s {
     word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
     word servo_max; // maximum limit of travel
     unsigned int receive_count; // number of messages received in THRESHOLD
-    unsigned int new_count; // messages just received
     unsigned long last_heard; // timestamp last message was received
     char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
