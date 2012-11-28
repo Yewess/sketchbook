@@ -184,4 +184,9 @@ const unsigned long *timerExpired(const unsigned long *currentTime,
                                   const unsigned long *lastTime,
                                   unsigned int interval);
 
+char nibbleToHexChar(byte nibble);
+const char *byteHexString(byte thebyte);
+
+
+
 #endif // ROBOVAC_H

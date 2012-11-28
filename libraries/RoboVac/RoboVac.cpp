@@ -63,3 +63,26 @@ const unsigned long *timerExpired(const unsigned long *currentTime,
         return (unsigned long *) NULL;
     }
 }
+
+char nibbleToHexChar(byte nibble) {
+    // range check
+    if (nibble < 16) {
+        if (nibble > 9) {
+            return char((nibble - 10) + 97); // ASCII 'a'
+        } else { // hex number
+            return char(nibble + 48); // ASCII '0'
+        }
+    } else {
+        return 'X';
+    }
+}
+
+const char *byteHexString(byte thebyte) {
+    char buf[3] = {'\0'};
+
+    // Convert a node's port ID to hexidecimal 2-char string & return static buf
+    buf[0] = nibbleToHexChar(thebyte & 0x0F);
+    buf[1] = nibbleToHexChar(thebyte & 0xF0);
+    return buf;
+}
+
