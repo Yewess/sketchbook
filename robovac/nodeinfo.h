@@ -5,7 +5,7 @@
 
 // keep receive_count updated for all nodes
 void updateNodes(unsigned long *currentTime) {
-    unsigned long elapsedTime;
+    const unsigned long *elapsedTime;
     int expired_count;
     int max_count = (THRESHOLD/TXINTERVAL);
     nodeInfo_t *node;
@@ -23,19 +23,14 @@ void updateNodes(unsigned long *currentTime) {
             continue;
         }
 
-        // check if millis() wrapped around
-        if ( *currentTime < node->last_heard ) {
-            elapsedTime = ((unsigned long)-1) - node->last_heard;
-            elapsedTime += *currentTime;
-        } else { // no wrap
-            elapsedTime = *currentTime - node->last_heard;
-        }
+        // Obtain elapsed time since last_heard
+        elapsedTime = timerExpired(currentTime, &node->last_heard, 1);
 
-        if (elapsedTime > THRESHOLD) {
+        if ((elapsedTime) && (*elapsedTime > THRESHOLD)) {
             // For every ms over THRESHOLD taken to receive minimum message
             // not less than 0
             expired_count = constrain(
-                (elapsedTime - THRESHOLD) / (THRESHOLD / GOODMSGMIN),
+                (*elapsedTime - THRESHOLD) / (THRESHOLD / GOODMSGMIN),
                 0,
                 max_count);
             if (node->receive_count >= expired_count) {
@@ -53,28 +48,25 @@ void updateNodes(unsigned long *currentTime) {
 
         // Nodes not heard from in 10x threshold get zerod last_heard
         // Any nodes w/o a receive_count lose last_heard
-        if (elapsedTime > (THRESHOLD * 10)) {
+        if ((elapsedTime) && (*elapsedTime > (THRESHOLD * 10))) {
             node->last_heard = 0;
             node->receive_count = 0;
         }
     }
 }
 
-nodeInfo_t *activeNode(unsigned long *currentTime) {
+nodeInfo_t *activeNode(unsigned long *currentTime, boolean ignore_receive_count) {
     nodeInfo_t *result = NULL;
-    // return most recent active node that meets >= GOODMSGMIN in THRESHOLD
+    // return most recent active node
     // or NULL if none meet the criteria
 
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        if (nodeInfo[nodeCount].receive_count >= GOODMSGMIN) {
-            if (result != NULL) { // most recent wins
-                if (nodeInfo[nodeCount].last_heard > result->last_heard) {
-                    PRINTTIME(*currentTime);
-                    D("Node ");
-                    D(nodeInfo[nodeCount].node_id);
-                    D(" compete w/ ");
-                    D(result->node_id);
-                    D("\n");
+        if (nodeInfo[nodeCount].last_heard == 0) {
+            continue;
+        }
+        if (ignore_receive_count || (nodeInfo[nodeCount].receive_count >= GOODMSGMIN)) {
+            if (result) { // most recent wins
+                if (nodeInfo[nodeCount].last_heard < result->last_heard) {
                     result = &nodeInfo[nodeCount];
                 }
             } else { // first match
@@ -130,7 +122,6 @@ void printNodes(void) {
         }
     }
 }
-
 
 void readNodeIDServoMap(void) {
     int address = 0;

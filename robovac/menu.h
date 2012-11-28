@@ -42,7 +42,6 @@
 
 #include <RoboVac.h>
 #include "callbacks.h"
-#include "statemachine.h"
 #include "lcd.h"
 
 // Main Menu
@@ -99,72 +98,6 @@ void menuSetup(void) {
     lastButtonChange = millis();
     lcdButtons = 0;
     lcdState = LCD_ENDSTATE;
-}
-
-void menuUp(unsigned long *currentTime) {
-    if (!currentCallback) {
-        if (currentMenu->prev_sibling) {
-            currentMenu = currentMenu->prev_sibling;
-            drawMenu();
-        } else {
-            currentCallback = blinkBacklight;
-        }
-    } else { // in a callback, pass button through
-        handleCallback(currentTime);
-    }
-}
-
-void menuDown(unsigned long *currentTime) {
-    if (!currentCallback) {
-        if (currentMenu->next_sibling) {
-            currentMenu = currentMenu->next_sibling;
-            drawMenu();
-        } else {
-            currentCallback = blinkBacklight;
-        }
-    } else {
-        handleCallback(currentTime);
-    }
-}
-
-void menuLeft(unsigned long *currentTime) {
-    if (!currentCallback) {
-        currentMenu = &m_setup;
-        drawMenu();
-    } else { // in a callback, pass through new button
-        handleCallback(currentTime);
-    }
-}
-
-void menuRight(unsigned long *currentTime) {
-    if (!currentCallback) {
-        if (currentMenu->child) {
-            currentMenu = currentMenu->child;
-            drawMenu();
-        } else if (currentMenu->callback) {
-            currentCallback = currentMenu->callback;
-            handleCallback(currentTime);
-        } else { // can't go right, can't do callback
-            currentCallback = blinkBacklight;
-            handleCallback(currentTime);
-        }
-    } else { // in a callback, pass through new button
-        handleCallback(currentTime);
-    }
-}
-
-void menuSelect(unsigned long *currentTime) {
-    if (!currentCallback) { // Not currently inside a callback
-        if (currentMenu->callback) {
-            currentCallback = currentMenu->callback;
-            handleCallback(currentTime);
-        } else {
-            // item has no callback, behave like menuRight
-            menuRight(currentTime);
-        }
-    } else { // in a callback, pass through new button
-        handleCallback(currentTime);
-    }
 }
 
 #endif // MENU_H

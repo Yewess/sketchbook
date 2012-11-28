@@ -3,16 +3,8 @@
 
 #include "globals.h"
 
-void handleCallback(unsigned long *currentTime) {
-    // Enter callback if any set
-    if (currentCallback) {
-        // Callback will handle & clear buttons
-        if ( (*currentCallback)(currentTime) ) {
-            currentCallback = NULL;
-        }
-        lcdButtons = 0;
-    }
-}
+// menu items defined in menu.h
+extern menuEntry_t m_setup;
 
 boolean blinkBacklight(unsigned long *currentTime) {
     if (timerExpired(currentTime, &lastButtonChange, LCDBLINKTIME)) {
@@ -26,8 +18,91 @@ boolean blinkBacklight(unsigned long *currentTime) {
     }
 }
 
+// has to be here b/c dependencies
+void handleButtons(unsigned long *currentTime) {
+    // does not run if in another callback
+    if (lcdButtons & BUTTON_SELECT) {
+        if (currentMenu->child) {
+            currentMenu = currentMenu->child;
+            drawMenu();
+        } else if (currentMenu->callback) {
+            currentCallback = currentMenu->callback;
+        } else { // Nav. Error Blink
+            currentCallback = blinkBacklight;
+        }
+    } else if (lcdButtons & BUTTON_LEFT) {
+        // Menu is at most one-level deep, just go back to main
+        currentMenu = &m_setup;
+        drawMenu();
+    } else if (lcdButtons & BUTTON_UP) {
+        if (currentMenu->prev_sibling) {
+            currentMenu = currentMenu->prev_sibling;
+            drawMenu();
+        } else { // Nav. Error Blink
+            currentCallback = blinkBacklight;
+        }
+    } else if (lcdButtons & BUTTON_RIGHT) {
+        if (currentMenu->child) {
+            currentMenu = currentMenu->child;
+            drawMenu();
+        } else if (currentMenu->callback) {
+            currentCallback = currentMenu->callback;
+        } else { // Nav. Error Blink
+            currentCallback = blinkBacklight;
+        }
+    } else if (lcdButtons & BUTTON_DOWN) {
+        if (currentMenu->next_sibling) {
+            currentMenu = currentMenu->next_sibling;
+            drawMenu();
+        } else { // Nav. Error Blink
+            currentCallback = blinkBacklight;
+        }
+    }
+}
+
+void handleCallbackButtons(unsigned long *currentTime) {
+    // Enter callback if any set
+    if (currentCallback) {
+        if ( (*currentCallback)(currentTime) ) {
+            currentCallback = NULL;
+        }
+        lcdButtons = 0; // Callback handles own buttons
+    } else {
+        handleButtons(currentTime);
+        // handleLCDState clears buttons
+    }
+}
+
 boolean monitorCallback(unsigned long *currentTime) {
-    D("monitorCB\n");
+    static unsigned long lastPaint=0;
+    nodeInfo_t *node=NULL;
+
+    if (lcdButtons) { // any key pressed
+        monitorMode = false;
+        return true;
+    }
+    monitorMode = true; // Don't turn on anything
+    // update lcdBuf & print every STATUSINTERVAL
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        lastPaint = *currentTime;
+        clearLcdBuf();
+        node = activeNode(currentTime, true); // Bypass GOODMSGMIN
+        if (node) {
+            strcpy(lcdBuf[0], node->node_name);
+            strcpy(lcdBuf[1], "Port# xx ID# xx ");
+            // port ID w/o NULL terminator
+            memcpy(&(lcdBuf[1][6]), byteHexString(node->port_id), 2);
+            // node ID w/o NULL terminator
+            memcpy(&(lcdBuf[1][13]), byteHexString(node->node_id), 2);
+            if (node->receive_count >= GOODMSGMIN) {
+                lcdBuf[1][15] = '!';
+            }
+        } else {
+            strcpy(lcdBuf[0], "Monitoring...   ");
+        }
+        printLcdBuf();
+    }
+    return false;
 }
 
 boolean portIDSetupCallback(unsigned long *currentTime) {

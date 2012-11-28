@@ -11,7 +11,7 @@ inline void clearLcdBuf(void) {
     }
     // Tag NULLs on the end of each row
     for (int y=0; y<lcdRows; y++) {
-        lcdBuf[y][lcdCols] = '\0';
+        lcdBuf[y][lcdCols] = '\0'; // buffer is lcdCols+1 long
     }
 }
 
@@ -103,8 +103,9 @@ void drawMenu(void) {
 
 void drawRunning(unsigned long *currentTime, const char *what) {
     // STUB
-    lcd.clear();
+    clearLcdBuf();
     lcd.print(what);
+    //printLcdBuf();
     D("VACUUMING ");
     D(what);
     D("\n");

@@ -38,13 +38,7 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <RoboVac.h>
 #include "globals.h"
-#include "control.h"
-#include "nodeinfo.h"
-#include "statemachine.h"
 #include "events.h"
-#include "callbacks.h"
-#include "lcd.h"
-#include "menu.h"
 
 /* Main Program */
 

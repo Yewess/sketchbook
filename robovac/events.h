@@ -2,10 +2,20 @@
 #ifndef EVENTS_H
 #define EVENTS_H
 
+#include <TimedEvent.h>
+#include <Wire.h>
+#include <Adafruit_RGBLCDShield.h>
+#include <RoboVac.h>
+#include "globals.h"
+#include "nodeinfo.h"
+#include "statemachine.h"
+
 void robovacStateEvent(TimerInformation *Sender) {
     unsigned long currentTime = millis();
     updateNodes(&currentTime);
-    //handleActionState(&currentTime);
+    if (monitorMode == false) {
+        handleActionState(&currentTime);
+    }
 }
 
 void pollRxEvent(TimerInformation *Sender) {
