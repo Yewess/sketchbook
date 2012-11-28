@@ -78,11 +78,11 @@ char nibbleToHexChar(byte nibble) {
 }
 
 const char *byteHexString(byte thebyte) {
-    char buf[3] = {'\0'};
+    static char buf[3] = {'\0'};
 
     // Convert a node's port ID to hexidecimal 2-char string & return static buf
-    buf[0] = nibbleToHexChar(thebyte & 0x0F);
-    buf[1] = nibbleToHexChar(thebyte & 0xF0);
+    buf[0] = nibbleToHexChar(thebyte & 0xF0);
+    buf[1] = nibbleToHexChar(thebyte & 0x0F);
     return buf;
 }
 

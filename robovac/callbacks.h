@@ -62,9 +62,11 @@ void handleButtons(unsigned long *currentTime) {
 
 void handleCallbackButtons(unsigned long *currentTime) {
     // Enter callback if any set
-    if (currentCallback) {
-        if ( (*currentCallback)(currentTime) ) {
+    if (currentCallback != NULL) {
+        if ( (*currentCallback)(currentTime) == true) {
+            lcdButtons = 0; // Callback handles own buttons
             currentCallback = NULL;
+            drawMenu();
         }
         lcdButtons = 0; // Callback handles own buttons
     } else {
@@ -78,6 +80,7 @@ boolean monitorCallback(unsigned long *currentTime) {
     nodeInfo_t *node=NULL;
 
     if (lcdButtons) { // any key pressed
+        lcdButtons = 0;
         monitorMode = false;
         return true;
     }
@@ -89,6 +92,10 @@ boolean monitorCallback(unsigned long *currentTime) {
         node = activeNode(currentTime, true); // Bypass GOODMSGMIN
         if (node) {
             strcpy(lcdBuf[0], node->node_name);
+            if (strlen(node->node_name) < lcdCols) {
+                memset(lcdBuf[strlen(node->node_name)], int(' '),
+                       lcdCols - strlen(node->node_name));
+            }
             strcpy(lcdBuf[1], "Port# xx ID# xx ");
             // port ID w/o NULL terminator
             memcpy(&(lcdBuf[1][6]), byteHexString(node->port_id), 2);
@@ -97,6 +104,10 @@ boolean monitorCallback(unsigned long *currentTime) {
             if (node->receive_count >= GOODMSGMIN) {
                 lcdBuf[1][15] = '!';
             }
+        } else if (message.node_id) {
+            strcpy(lcdBuf[0], "Unknown Node    ");
+            strcpy(lcdBuf[1], "Node ID# xx     ");
+            memcpy(&(lcdBuf[1][9]), byteHexString(message.node_id), 2);
         } else {
             strcpy(lcdBuf[0], "Monitoring...   ");
         }

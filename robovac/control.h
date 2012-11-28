@@ -28,7 +28,7 @@ void moveServos(unsigned char port_id) {
 
     PRINTTIME(millis());
     if (port_id == 0) {
-        D("Opening all port doors");
+        D("Opening all port doors\n");
     } else { // Close all ports except port_id
         for (nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
             if (nodeInfo[nodeCount].port_id != port_id) {
@@ -41,7 +41,7 @@ void moveServos(unsigned char port_id) {
                 D(nodeInfo[nodeCount].node_id);
                 D("'s port ");
                 D(nodeInfo[nodeCount].port_id);
-                D(" open!!!!!!!!");
+                D(" open!!!!!!!!\n");
             }
         }
     }
