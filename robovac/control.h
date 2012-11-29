@@ -1,6 +1,9 @@
 #ifndef CONTROL_H
 #define CONTROL_H
 
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
 void servoControl(boolean turnOn) {
     if (!monitorMode) {
         if (turnOn == true) {
@@ -25,27 +28,18 @@ void moveServos(unsigned char port_id) {
     // will be called repeatidly until SERVOMOVETIME expires
     // port_id could change on any call
     int nodeCount=0;
+    nodeInfo_t *node;
 
-    PRINTTIME(millis());
-    if (port_id == 0) {
-        D("Opening all port doors\n");
-    } else { // Close all ports except port_id
-        for (nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-            if (nodeInfo[nodeCount].port_id != port_id) {
-                D("Closing node_id ");
-                D(nodeInfo[nodeCount].node_id);
-                D("'s port ");
-                D(nodeInfo[nodeCount].port_id);
-            } else {
-                D("Leaving node_id ");
-                D(nodeInfo[nodeCount].node_id);
-                D("'s port ");
-                D(nodeInfo[nodeCount].port_id);
-                D(" open!!!!!!!!\n");
-            }
+    for (nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+        node = &nodeInfo[nodeCount];
+        if ((port_id == 0) || (node->port_id == port_id)) {
+            // OPEN
+            pwm.setPWM(node->port_id, 0, node->servo_max);
+        } else {
+            // CLOSE
+            pwm.setPWM(node->port_id, 0, node->servo_min);
         }
     }
-    D("\n");
 }
 
 #endif // CONTROL_H

@@ -17,6 +17,7 @@ void updateNodes(unsigned long *currentTime) {
 
         // don't bother with nodes having no messages or last_heard
         if ( (node->receive_count == 0) ||
+             (currentTime == NULL) ||
              (node->last_heard == 0 )) {
             node->receive_count = 0;
             node->last_heard = 0;

@@ -80,6 +80,8 @@ boolean monitorCallback(unsigned long *currentTime) {
     nodeInfo_t *node=NULL;
 
     if (lcdButtons) { // any key pressed
+        // reset all node counters
+        updateNodes(NULL);
         lcdButtons = 0;
         monitorMode = false;
         return true;

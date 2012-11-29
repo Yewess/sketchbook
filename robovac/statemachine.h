@@ -234,6 +234,7 @@ void handleLCDState(unsigned long *currentTime) {
                 drawRunning(currentTime, currentActive->node_name);
             } else { // Not Vacuuming
                 updateLCDState(LCD_ACTIVEWAIT, currentTime);
+                drawMenu();
             }
             break;
 
