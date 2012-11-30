@@ -2,6 +2,7 @@
 #define CALLBACKS_H
 
 #include "globals.h"
+#include "control.h"
 
 // menu items defined in menu.h
 extern menuEntry_t m_setup;
@@ -20,6 +21,12 @@ boolean blinkBacklight(unsigned long *currentTime) {
 
 // has to be here b/c dependencies
 void handleButtons(unsigned long *currentTime) {
+
+    // always turn the light on for buttons
+    if (lcdButtons) {
+        lcd.setBacklight(0x1); // ON
+    }
+
     // does not run if in another callback
     if (lcdButtons & BUTTON_SELECT) {
         if (currentMenu->child) {
@@ -27,6 +34,7 @@ void handleButtons(unsigned long *currentTime) {
             drawMenu();
         } else if (currentMenu->callback) {
             currentCallback = currentMenu->callback;
+            lcdButtons = 0; // Don't process in callback also
         } else { // Nav. Error Blink
             currentCallback = blinkBacklight;
         }
@@ -47,6 +55,7 @@ void handleButtons(unsigned long *currentTime) {
             drawMenu();
         } else if (currentMenu->callback) {
             currentCallback = currentMenu->callback;
+            lcdButtons = 0; // Don't process in callback also
         } else { // Nav. Error Blink
             currentCallback = blinkBacklight;
         }
@@ -64,11 +73,9 @@ void handleCallbackButtons(unsigned long *currentTime) {
     // Enter callback if any set
     if (currentCallback != NULL) {
         if ( (*currentCallback)(currentTime) == true) {
-            lcdButtons = 0; // Callback handles own buttons
             currentCallback = NULL;
             drawMenu();
         }
-        lcdButtons = 0; // Callback handles own buttons
     } else {
         handleButtons(currentTime);
         // handleLCDState clears buttons
@@ -120,18 +127,52 @@ boolean monitorCallback(unsigned long *currentTime) {
 
 boolean portIDSetupCallback(unsigned long *currentTime) {
     D("portIDSetupCB\n");
+    return true;
 }
 
 boolean travelAdjustCallback(unsigned long *currentTime) {
     D("travelAdjustCB\n");
+    return true;
 }
 
 boolean portToggleCallback(unsigned long *currentTime) {
     D("portToggleCB\n");
+    return true;
 }
 
 boolean vacToggleCallback(unsigned long *currentTime) {
-    D("vacToggleCB\n");
+    static bool onSelected = true;
+    static unsigned long lastPaint=0;
+
+    // HiJack monitor mode to freeze vac state machine
+    if (lcdButtons) {
+        if (lcdButtons & BUTTON_SELECT) {
+            onSelected = !onSelected;
+            lastPaint=0;
+        } else { // exit
+            onSelected = true;
+            monitorMode = false;
+            lastPaint=0;
+            return true;
+        }
+    }
+
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        clearLcdBuf();
+        strcpy(lcdBuf[0], "Press Select to");
+        if (onSelected) {
+            strcpy(lcdBuf[1], "toggle Vac. on  ");
+            vacControl(false); // vac OFF
+        } else {
+            strcpy(lcdBuf[1], "toggle Vac. off ");
+            vacControl(true); // vac ON
+        }
+        printLcdBuf();
+        lastPaint = *currentTime;
+    }
+
+    monitorMode = true;
+    return false; // keep looping
 }
 
 #endif // CALLBACKS_H

@@ -187,7 +187,6 @@ void handleLCDState(unsigned long *currentTime) {
         case LCD_ACTIVEWAIT:
             if (lcdButtons) {
                 updateLCDState(LCD_INMENU, currentTime);
-                lcdButtons = 0;
             } else {
                 if ((monitorMode == false) && (currentActive != NULL)) { // A node went active
                     updateLCDState(LCD_RUNNING, currentTime);
@@ -199,23 +198,14 @@ void handleLCDState(unsigned long *currentTime) {
 
         case LCD_SLEEPWAIT:
             lcd.setBacklight(0); // OFF
-            if (lcdButtons) {
-                lcd.setBacklight(0x1); // ON
-                lcdButtons = 0;
-                updateLCDState(LCD_INMENU, currentTime);
-            } else if (currentActive != NULL) {
-                lcd.setBacklight(0x1); // ON
+            if (currentActive != NULL) {
                 updateLCDState(LCD_RUNNING, currentTime);
-            } else {
-                //D("Zzz ");
             }
             break;
 
         case LCD_INMENU:
             // Prevents transition to LCD_RUNNING
-            if (lcdButtons) {
-                lcdButtons = 0;
-            } else if (timerExpired(currentTime, &lastButtonChange, LCDMENUTIME)) {
+            if (timerExpired(currentTime, &lastButtonChange, LCDMENUTIME)) {
                 if (monitorMode == false) {
                     if (currentActive != NULL) { // VACUUMING
                         updateLCDState(LCD_RUNNING, currentTime);
@@ -227,8 +217,8 @@ void handleLCDState(unsigned long *currentTime) {
             break;
 
         case LCD_RUNNING:
+            lcd.setBacklight(0x1); // ON
             if (lcdButtons) {
-                lcdButtons = 0;
                 updateLCDState(LCD_INMENU, currentTime);
             } else if (currentActive != NULL) { // VACUUMING
                 drawRunning(currentTime, currentActive->node_name);
@@ -241,12 +231,12 @@ void handleLCDState(unsigned long *currentTime) {
         case LCD_ENDSTATE:
         default:
             monitorMode = false;
-            lcdButtons = 0;
             currentCallback = NULL;
             updateLCDState(LCD_ACTIVEWAIT, currentTime);
             drawMenu();
             break;
     }
+    lcdButtons = 0;
 }
 
 #endif // STATEMACHINE_H
