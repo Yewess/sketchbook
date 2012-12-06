@@ -33,9 +33,9 @@
 #define NODENAMEMAX 27 // name characters + 1
 #define MAXNODES 6 // number of nodes to keep track of
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1
-#define SERVOPOWERTIME ((unsigned int) 250) // ms to wait for servo's to power up/down
-#define SERVOMOVETIME ((unsigned int) 1000) // ms to wait for servo's to move
-#define VACPOWERTIME ((unsigned int) 2000) // ms to wait for vac to power on
+#define SERVOPOWERTIME ((unsigned int) 100) // ms to wait for servo's to power up/down
+#define SERVOMOVETIME ((unsigned int) 500) // ms to wait for servo's to move
+#define VACPOWERTIME ((unsigned int) 10000) // ms minimum vac must be powered on
 #define LCDSLEEPTIME ((unsigned int) 180000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned int) 30000) // ms before menu activity times out
 #define LCDBLINKTIME ((unsigned int) 100) // ms to turn backlight off during blink

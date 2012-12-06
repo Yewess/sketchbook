@@ -4,6 +4,17 @@
 #include <RoboVac.h>
 #include "globals.h"
 
+inline void clearRunningBuf(void) {
+    // Fill with space characters
+    for (int y=0; y<lcdRows; y++) {
+        memset(runningBuf[y], ' ', lcdCols);
+    }
+    // Tag NULLs on the end of each row
+    for (int y=0; y<lcdRows; y++) {
+        runningBuf[y][lcdCols] = '\0'; // buffer is lcdCols+1 long
+    }
+}
+
 inline void clearLcdBuf(void) {
     // Fill with space characters
     for (int y=0; y<lcdRows; y++) {
@@ -104,14 +115,12 @@ void drawMenu(void) {
     }
 }
 
-void drawRunning(unsigned long *currentTime, const char *what) {
-    // STUB
-    clearLcdBuf();
-    lcd.print(what);
-    //printLcdBuf();
-    D("VACUUMING ");
-    D(what);
-    D("\n");
+void drawRunning(void) {
+    // updateState() fills runningBuf
+    for (int y=0; y<lcdRows; y++) {
+        lcd.setCursor(0, y);
+        lcd.print(runningBuf[y]);
+    }
 }
 
 #endif // LCD_H

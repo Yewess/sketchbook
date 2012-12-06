@@ -42,6 +42,7 @@ boolean monitorMode = false; // don't actually move servos / switch vac
 
 // UI State
 char lcdBuf[lcdRows][lcdCols+1] = {'\0'};
+char runningBuf[lcdRows][lcdCols+1] = {'\0'}; // used for drawRunning
 lcdState_t lcdState;
 uint8_t lcdButtons; // Buttons pressed during last lcdEvent()
 unsigned long lastButtonChange; // last time button state changed
