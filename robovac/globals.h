@@ -9,9 +9,12 @@
 #define POLLINTERVAL 25 // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
 #define LCDINTERVAL (STATEINTERVAL+14) // UI can be a bit slower
-#define STATUSINTERVAL 1015 // mainly for debugging / turning LED off
+#define STATUSINTERVAL 1015 // DEBUGGING and LCD updates
+#define BUTTONCHANGE 100 // minimum time between button changes
 #define GOODMSGMIN 2 // Minimum number of good messages in...
 #define THRESHOLD 6000 // ..6 second reception threshold, to signal start
+#define CHARLOWER 32 // lower limit for node id name ASCII character
+#define CHARUPPER 125 // upper limit for node id name ASCII characters
 
 /* constants */
 const int statusLEDPin = 13;
@@ -44,6 +47,15 @@ uint8_t lcdButtons; // Buttons pressed during last lcdEvent()
 unsigned long lastButtonChange; // last time button state changed
 menuEntry_t *currentMenu; // Current entry point in menu
 menuEntryCallback_t currentCallback = NULL; // address of currently running callback
+const char lcdPortIDLine[] = "Port# xx ID# xx ";
+uint8_t downArrowChar[] = {B00000,
+                           B00000,
+                           B00100,
+                           B00100,
+                           B10101,
+                           B01110,
+                           B00100,
+                           B00000};
 
 // I2C Device init.
 Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();

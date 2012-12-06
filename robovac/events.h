@@ -47,9 +47,12 @@ void lcdEvent(TimerInformation *Sender) {
     uint8_t new_buttons=0;
 
     new_buttons = lcd.readButtons();
-    if (new_buttons != lcdButtons) {
+    if ((new_buttons != lcdButtons) &&
+        timerExpired(&currentTime, &lastButtonChange, BUTTONCHANGE)) {
         lastButtonChange = currentTime;
         lcdButtons = new_buttons;
+    } else { // assume buttons were handled
+        lcdButtons = 0;
     }
     // Clears lcdButtons that were handled
     handleLCDState(&currentTime);

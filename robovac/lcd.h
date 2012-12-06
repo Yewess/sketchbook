@@ -52,6 +52,9 @@ const char *itemHighlight(menuEntry_t *entry) {
 void drawMenu(void) {
     const char *highlight = itemHighlight(currentMenu);
 
+    // so doesn't interfear with drawRunning
+    lcd.createChar(LCDDARROW, downArrowChar);
+
     D("Menu:\n");
     if (!currentCallback) { // they draw their own
         unsigned int above = itemsAbove(currentMenu);

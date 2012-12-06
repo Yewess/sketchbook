@@ -239,7 +239,6 @@ void handleLCDState(unsigned long *currentTime) {
             drawMenu();
             break;
     }
-    lcdButtons = 0;
 }
 
 #endif // STATEMACHINE_H

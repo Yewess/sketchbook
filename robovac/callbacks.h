@@ -102,10 +102,11 @@ boolean monitorCallback(unsigned long *currentTime) {
         if (node) {
             strcpy(lcdBuf[0], node->node_name);
             if (strlen(node->node_name) < lcdCols) {
-                memset(lcdBuf[strlen(node->node_name)], int(' '),
+                memset(&(lcdBuf[0][strlen(node->node_name)]),
+                       int(' '),
                        lcdCols - strlen(node->node_name));
             }
-            strcpy(lcdBuf[1], "Port# xx ID# xx ");
+            strcpy(lcdBuf[1], lcdPortIDLine);
             // port ID w/o NULL terminator
             memcpy(&(lcdBuf[1][6]), byteHexString(node->port_id), 2);
             // node ID w/o NULL terminator
@@ -126,8 +127,156 @@ boolean monitorCallback(unsigned long *currentTime) {
 }
 
 boolean portIDSetupCallback(unsigned long *currentTime) {
-    D("portIDSetupCB\n");
-    return true;
+    static unsigned long lastPaint=0;
+    static byte node_index = 0;
+    static byte position = 0; // if (changing), char offset being changed
+    static boolean changing = false; // currently modifying a field
+    static boolean nodeIDField = true; // false==name field
+    nodeInfo_t *node = &(nodeInfo[node_index]);
+    char curch;
+    static boolean blinkOn=false;
+
+    blinkOn = !blinkOn;
+
+    // Write screen template
+    clearLcdBuf();
+    strcpy(lcdBuf[0], lcdPortIDLine);
+    strcpy(lcdBuf[1], node->node_name);
+    // pad node name with blanks
+    if (strlen(node->node_name) < lcdCols) {
+        memset(&(lcdBuf[1][strlen(node->node_name)]),
+               int(' '),
+               lcdCols - strlen(node->node_name));
+    }
+    // draw IDs
+    memcpy(&(lcdBuf[0][6]), byteHexString(node->port_id), 2);
+    memcpy(&(lcdBuf[0][13]), byteHexString(node->node_id), 2);
+    // draw selection
+    if (blinkOn) {
+        if (nodeIDField) {
+            lcdBuf[0][12] = LCDRARROW;
+            lcdBuf[0][15] = LCDLARROW;
+        } else { // name selection
+            lcdBuf[0][5] = LCDDARROW;
+            lcdBuf[0][8] = LCDDARROW;
+            lcdBuf[0][12] = LCDDARROW;
+            lcdBuf[0][15] = LCDDARROW;
+        }
+    }
+    // draw cursor
+    if (changing) {
+        lcd.cursor();
+        lcd.blink();
+        if (nodeIDField) {
+            lcd.setCursor(14, 0);
+        } else { // changing name
+            lcd.setCursor(position, 1);
+            curch = node->node_name[position];
+        }
+    } else { // not changing
+        lcd.noCursor();
+        lcd.noBlink();
+    }
+
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        printLcdBuf();
+        lastPaint = *currentTime;
+    }
+
+    // handle key presses
+    if (lcdButtons) {
+        if (lcdButtons & BUTTON_RIGHT) {
+            if (changing) {
+                if (!nodeIDField) { // name change
+                    if (position == 15) {
+                        position = 0;
+                    } else {
+                        position++;
+                    }
+                } // else do nothing for nodeIDField
+            } else { // Select other field
+                nodeIDField = !nodeIDField;
+            }
+        }
+        if (lcdButtons & BUTTON_LEFT) {
+            if (!changing) { // exit
+                node_index=0;
+                position=0;
+                changing=false;
+                nodeIDField=true;
+                monitorMode = false;
+                lastPaint=0;
+                lcd.noCursor();
+                lcd.noBlink();
+#ifndef DEBUG
+                writeNodeIDServoMap(); // only updates changed info
+#endif
+                return true; // EXIT callback
+            } else {
+                if (!nodeIDField) { // name change
+                    if (position == 0) {
+                        position = 15;
+                    } else {
+                        position--;
+                    }
+                } // else do nothing for nodeIDField
+            }
+        }
+        if (lcdButtons & BUTTON_UP) {
+            if (!changing) {
+                if (node_index >= (MAXNODES - 1)) {
+                    node_index = 0;
+                } else {
+                    node_index++;
+                }
+            } else { // character change
+                if (nodeIDField) {
+                    if (node->node_id >= 254) {
+                        node->node_id = 1;
+                    } else {
+                        node->node_id += 1;
+                    }
+                } else { // name field
+                    if (curch >= CHARUPPER) {
+                        curch = CHARLOWER;
+                    } else {
+                        curch++;
+                    }
+                    node->node_name[position] = curch;
+                }
+            }
+        }
+        if (lcdButtons & BUTTON_DOWN) {
+            if (!changing) {
+                if (node_index == 0) {
+                    node_index = (MAXNODES - 1);
+                } else {
+                    node_index--;
+                }
+            } else { // character change
+                if (nodeIDField) {
+                    if (node->node_id <= 1) {
+                        node->node_id = 254;
+                    } else {
+                        node->node_id -= 1;
+                    }
+                } else { // name field
+                    if (curch <= CHARLOWER) {
+                        curch = CHARUPPER;
+                    } else {
+                        curch--;
+                    }
+                    node->node_name[position] = curch;
+                }
+            }
+        }
+        if (lcdButtons & BUTTON_SELECT) {
+            changing = !changing;
+        }
+    }
+
+    monitorMode = true;
+    return false; // keep looping
 }
 
 boolean travelAdjustCallback(unsigned long *currentTime) {

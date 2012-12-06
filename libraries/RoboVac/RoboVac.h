@@ -39,8 +39,9 @@
 #define LCDSLEEPTIME ((unsigned int) 180000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned int) 30000) // ms before menu activity times out
 #define LCDBLINKTIME ((unsigned int) 100) // ms to turn backlight off during blink
-#define LCDRARROW (B01111110) //  right arrow character
-#define LCDLARROW (B01111111) // left arrow character
+#define LCDRARROW 126 //  right arrow character
+#define LCDLARROW 127 // left arrow character
+#define LCDDARROW 4 // Down Arrow
 
 // constants
 const int lcdRows = 2;
