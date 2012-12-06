@@ -18,7 +18,7 @@ void vacControl(boolean turnOn, boolean ignoreMonitorMode) {
     if (ignoreMonitorMode || !monitorMode) {
         if (turnOn == true) {
             digitalWrite(vacPowerControlPin, HIGH);
-            D("The Vav is ON\nr");
+            D("The Vac is ON\nr");
         } else {
             digitalWrite(vacPowerControlPin, LOW);
             D("The Vac is OFF\nr");

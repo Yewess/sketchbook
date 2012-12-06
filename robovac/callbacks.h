@@ -275,18 +275,206 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
         }
     }
 
+    // HiJack monitor mode to freeze vac state machine
     monitorMode = true;
     return false; // keep looping
 }
 
 boolean travelAdjustCallback(unsigned long *currentTime) {
-    D("travelAdjustCB\n");
-    return true;
+    static unsigned long lastPaint=0;
+    static byte node_index = 0;
+    static boolean changing = false; // currently modifying a field
+    nodeInfo_t *node = &(nodeInfo[node_index]);
+    word minmax = 0;
+    byte minmaxMSB = 0;
+    byte minmaxLSB = 0;
+
+    // make sure servos are on
+    servoControl(true);
+
+    // Write screen template
+    clearLcdBuf();
+    strcpy(lcdBuf[0], lcdPortIDLine);
+    if (!changing) {
+        strcpy(lcdBuf[1], node->node_name);
+        // pad node name with blanks
+        if (strlen(node->node_name) < lcdCols) {
+            memset(&(lcdBuf[1][strlen(node->node_name)]),
+                   int(' '),
+                   lcdCols - strlen(node->node_name));
+        }
+    } else { // draw hi/lo instead of name
+        strcpy(lcdBuf[1], lcdRangeLine);
+        // first low
+        minmax = node->servo_min;
+        minmaxMSB = highByte(minmax);
+        minmaxLSB = lowByte(minmax);
+        memcpy(&(lcdBuf[1][3]), byteHexString(minmaxMSB), 2);
+        memcpy(&(lcdBuf[1][5]), byteHexString(minmaxLSB), 2);
+        // last high
+        minmax = node->servo_max;
+        minmaxMSB = highByte(minmax);
+        minmaxLSB = lowByte(minmax);
+        memcpy(&(lcdBuf[1][11]), byteHexString(minmaxMSB), 2);
+        memcpy(&(lcdBuf[1][13]), byteHexString(minmaxLSB), 2);
+    }
+
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        printLcdBuf();
+        moveServos(node->port_id);
+        lastPaint = *currentTime;
+    }
+
+    // handle key presses
+    if (lcdButtons) {
+        if (lcdButtons & BUTTON_RIGHT) {
+            if (changing) {
+                // increment low range
+                node->servo_min += SERVOINCDEC;
+            }
+        }
+        if (lcdButtons & BUTTON_LEFT) {
+            if (!changing) { // exit
+                node_index=0;
+                changing=false;
+                monitorMode = false;
+                lastPaint=0;
+#ifndef DEBUG
+                writeNodeIDServoMap(); // only updates changed info when not in debug
+#endif
+                servoControl(false); // turn off
+                return true; // EXIT callback
+            } else {
+                // decrement low range
+                node->servo_min -= SERVOINCDEC;
+            }
+        }
+        if (lcdButtons & BUTTON_UP) {
+            if (!changing) {
+                if (node_index >= (MAXNODES - 1)) {
+                    node_index = 0;
+                } else {
+                    node_index++;
+                }
+            } else { // character change
+                // increment high range
+                node->servo_max += SERVOINCDEC;
+            }
+        }
+        if (lcdButtons & BUTTON_DOWN) {
+            if (!changing) {
+                if (node_index == 0) {
+                    node_index = (MAXNODES - 1);
+                } else {
+                    node_index--;
+                }
+            } else { // character change
+                // decrement high range
+                node->servo_min += SERVOINCDEC;
+            }
+        }
+        if (lcdButtons & BUTTON_SELECT) {
+            changing = !changing;
+        }
+    }
+
+    // constrain minmax to range
+    if (node->servo_max > servoMaxPW) {
+        node->servo_max = servoMaxPW;
+    } else if (node->servo_max < servoMinPW) {
+        node->servo_max = servoMinPW;
+    }
+    if (node->servo_min > servoMaxPW) {
+        node->servo_min = servoMaxPW;
+    } else if (node->servo_min < servoMinPW) {
+        node->servo_min = servoMinPW;
+    }
+    // HiJack monitor mode to freeze vac state machine
+    monitorMode = true;
+    return false; // keep looping
 }
 
 boolean portToggleCallback(unsigned long *currentTime) {
-    D("portToggleCB\n");
-    return true;
+    static unsigned long lastPaint=0;
+    static byte node_index = 0;
+    static boolean allOpen = false;
+    nodeInfo_t *node = &(nodeInfo[node_index]);
+
+    // make sure servos are on
+    servoControl(true);
+
+    // initialize with all servos open
+    if (!allOpen) {
+        moveServos(0);
+        delay(SERVOMOVETIME);
+        allOpen = true;
+    }
+
+    // Write screen template
+    clearLcdBuf();
+    strcpy(lcdBuf[0], lcdPortIDLine);
+    strcpy(lcdBuf[1], node->node_name);
+    // pad node name with blanks
+    if (strlen(node->node_name) < lcdCols) {
+        memset(&(lcdBuf[1][strlen(node->node_name)]),
+               int(' '),
+               lcdCols - strlen(node->node_name));
+    }
+
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        printLcdBuf();
+        lastPaint = *currentTime;
+    }
+
+    // handle key presses
+    if (lcdButtons) {
+        if ( (lcdButtons & BUTTON_RIGHT) ||
+             (lcdButtons & BUTTON_SELECT) ) {
+            moveServos(node->port_id); // open port
+        }
+        if (lcdButtons & BUTTON_LEFT) {
+            // exit
+                node_index=0;
+                allOpen = false;
+                monitorMode = false;
+                lastPaint=0;
+                moveServos(0);
+                delay(SERVOMOVETIME);
+                servoControl(false); // turn off
+                return true; // EXIT callback
+        }
+        if (lcdButtons & BUTTON_UP) {
+            if (node_index >= (MAXNODES - 1)) {
+                node_index = 0;
+            } else {
+                node_index++;
+            }
+            allOpen = false; // make sure everything opens
+        }
+        if (lcdButtons & BUTTON_DOWN) {
+            if (node_index == 0) {
+                node_index = (MAXNODES - 1);
+            } else {
+                node_index--;
+            }
+            allOpen = false; // make sure everything opens
+        }
+    }
+
+    // constrain minmax to range
+    if (node->servo_max > servoMaxPW) {
+        node->servo_max = servoMaxPW;
+    } else if (node->servo_max < servoMinPW) {
+        node->servo_max = servoMinPW;
+    }
+    if (node->servo_min > servoMaxPW) {
+        node->servo_min = servoMaxPW;
+    } else if (node->servo_min < servoMinPW) {
+        node->servo_min = servoMinPW;
+    }
+    // HiJack monitor mode to freeze vac state machine
+    monitorMode = true;
+    return false; // keep looping
 }
 
 boolean vacToggleCallback(unsigned long *currentTime) {

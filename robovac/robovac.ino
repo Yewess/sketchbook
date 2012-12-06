@@ -100,7 +100,7 @@ void setup() {
     lcd.begin(lcdCols, lcdRows);
     lcd.setBacklight(0x1); // ON
     pwm.begin();
-    pwm.setPWMFreq(60);
+    pwm.setPWMFreq(PWMFREQ);
 
     // Setup menu
     menuSetup();

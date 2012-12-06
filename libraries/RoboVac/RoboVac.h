@@ -42,6 +42,7 @@
 #define LCDRARROW 126 //  right arrow character
 #define LCDLARROW 127 // left arrow character
 #define LCDDARROW 4 // Down Arrow
+#define SERVOINCDEC 5 // amount to move hi/lo range
 
 // constants
 const int lcdRows = 2;

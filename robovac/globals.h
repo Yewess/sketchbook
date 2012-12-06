@@ -6,15 +6,20 @@
 /* Definitions */
 
 // Constants used once (to save space)
-#define POLLINTERVAL 25 // @ 300 baud, takes 100ms to receive 30 bytes
+#define POLLINTERVAL (25) // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
 #define LCDINTERVAL (STATEINTERVAL+14) // UI can be a bit slower
-#define STATUSINTERVAL 1015 // DEBUGGING and LCD updates
-#define BUTTONCHANGE 100 // minimum time between button changes
-#define GOODMSGMIN 2 // Minimum number of good messages in...
-#define THRESHOLD 6000 // ..6 second reception threshold, to signal start
-#define CHARLOWER 32 // lower limit for node id name ASCII character
-#define CHARUPPER 125 // upper limit for node id name ASCII characters
+#define STATUSINTERVAL (1015) // DEBUGGING and LCD updates
+#define BUTTONCHANGE (100) // minimum time between button changes
+#define GOODMSGMIN (2) // Minimum number of good messages in...
+#define THRESHOLD (6000) // ..6 second reception threshold, to signal start
+#define CHARLOWER (32) // lower limit for node id name ASCII character
+#define CHARUPPER (125) // upper limit for node id name ASCII characters
+#define PWMFREQ (60.0) // servo PWM frequency to use (60Hz == 16ms)
+#define USPERBIT ((1000000.0 / PWMFREQ) / 4096.0) // uS per bit for 12bit res @ PWMFREQ
+#define PWMMAX (2000.0 / USPERBIT) // maximum bits for 2ms long pulse
+#define PWMMIN (1000.0 / USPERBIT) // minimum bits for 1ms long pulse
+#define PWMCENTER (PWMMIN + ((PWMMAX-PWMMIN) / 2.0))
 
 /* constants */
 const int statusLEDPin = 13;
@@ -22,7 +27,9 @@ const int rxDataPin = 12;
 const int signalStrengthPin = 0;
 const int servoPowerControlPin = 7;
 const int vacPowerControlPin = 2;
-const int servoCenterPW = 368;
+const int servoCenterPW = int(PWMCENTER);
+const int servoMinPW = int(PWMMIN);
+const int servoMaxPW = int(PWMMAX);
 
 /* globals */
 
@@ -49,6 +56,7 @@ unsigned long lastButtonChange; // last time button state changed
 menuEntry_t *currentMenu; // Current entry point in menu
 menuEntryCallback_t currentCallback = NULL; // address of currently running callback
 const char lcdPortIDLine[] = "Port# xx ID# xx ";
+const char lcdRangeLine[] =  "Lo:xxxx Hi:xxxx ";
 uint8_t downArrowChar[] = {B00000,
                            B00000,
                            B00100,

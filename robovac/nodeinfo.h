@@ -150,7 +150,8 @@ void readNodeIDServoMap(void) {
         address++;
         nodeInfo[nodeCount].servo_min |= EEPROM.read(address);
         address++;
-        if (nodeInfo[nodeCount].servo_min == 65535) { // uninitialized EEPROM
+        if ((nodeInfo[nodeCount].servo_min <= servoMinPW) ||
+            (nodeInfo[nodeCount].servo_min >= servoMaxPW) ) { // uninitialized EEPROM
             nodeInfo[nodeCount].servo_min = servoCenterPW;
         }
         D(".");
@@ -160,7 +161,8 @@ void readNodeIDServoMap(void) {
         address++;
         nodeInfo[nodeCount].servo_min |= EEPROM.read(address);
         address++;
-        if (nodeInfo[nodeCount].servo_max == 65535) { // uninitialized EEPROM
+        if ((nodeInfo[nodeCount].servo_max <= servoMinPW) ||
+            (nodeInfo[nodeCount].servo_max >= servoMaxPW) ) { // uninitialized EEPROM
             nodeInfo[nodeCount].servo_max = servoCenterPW;
         }
         D(".");
