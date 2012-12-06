@@ -55,6 +55,10 @@ void setup() {
     vw_set_ptt_pin(statusLEDPin);
     pinMode(statusLEDPin, OUTPUT);
     digitalWrite(statusLEDPin, LOW);
+    pinMode(servoPowerControlPin, OUTPUT);
+    digitalWrite(servoPowerControlPin, LOW);
+    pinMode(vacPowerControlPin, OUTPUT);
+    digitalWrite(vacPowerControlPin, LOW);
     vw_setup(RXTXBAUD);
     vw_rx_start();
 

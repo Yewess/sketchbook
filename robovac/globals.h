@@ -18,7 +18,7 @@ const int statusLEDPin = 13;
 const int rxDataPin = 12;
 const int signalStrengthPin = 0;
 const int servoPowerControlPin = 7;
-const int vacPowerControlPin = 8;
+const int vacPowerControlPin = 2;
 const int servoCenterPW = 368;
 
 /* globals */

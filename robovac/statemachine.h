@@ -44,7 +44,7 @@ void handleActionState(unsigned long *currentTime) {
         case VAC_VACPOWERUP:
             currentActive = activeNode(currentTime, false);
             if (currentActive != NULL) { // node change doesn't matter
-                vacControl(true); // Power ON
+                vacControl(true, false); // Power ON
                 if (timerExpired(currentTime, &lastStateChange, VACPOWERTIME)) {
                     // powerup finished
                     updateState(VAC_SERVOPOWERUP, currentTime);
@@ -115,7 +115,7 @@ void handleActionState(unsigned long *currentTime) {
             // ignore any nodes comming online, must go through VAC_SERVOSTANDBY
             // before VAC_VACPOWERUP
             lastActive = currentActive = NULL;
-            vacControl(false); // Power OFF
+            vacControl(false, true); // Power OFF
             updateState(VAC_SERVOPOSTPOWERUP, currentTime);
             break;
 
@@ -153,7 +153,7 @@ void handleActionState(unsigned long *currentTime) {
             lastActive = currentActive = NULL;
             // Make sure everything powered off
             servoControl(false); // Power off
-            vacControl(false); // Power OFF
+            vacControl(false, true); // Power OFF
             updateState(VAC_LISTENING, currentTime);
             break;
     }
@@ -200,6 +200,9 @@ void handleLCDState(unsigned long *currentTime) {
             lcd.setBacklight(0); // OFF
             if (currentActive != NULL) {
                 updateLCDState(LCD_RUNNING, currentTime);
+            } else if (lcdButtons) {
+                lcd.setBacklight(1); // ON
+                updateLCDState(LCD_INMENU, currentTime);
             }
             break;
 

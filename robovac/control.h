@@ -14,12 +14,14 @@ void servoControl(boolean turnOn) {
     }
 }
 
-void vacControl(boolean turnOn) {
-    if (!monitorMode) {
+void vacControl(boolean turnOn, boolean ignoreMonitorMode) {
+    if (ignoreMonitorMode || !monitorMode) {
         if (turnOn == true) {
             digitalWrite(vacPowerControlPin, HIGH);
+            D("The Vav is ON\nr");
         } else {
-            digitalWrite(servoPowerControlPin, LOW);
+            digitalWrite(vacPowerControlPin, LOW);
+            D("The Vac is OFF\nr");
         }
     }
 }

@@ -150,6 +150,7 @@ boolean vacToggleCallback(unsigned long *currentTime) {
             onSelected = !onSelected;
             lastPaint=0;
         } else { // exit
+            vacControl(false, true); // vac OFF
             onSelected = true;
             monitorMode = false;
             lastPaint=0;
@@ -162,10 +163,10 @@ boolean vacToggleCallback(unsigned long *currentTime) {
         strcpy(lcdBuf[0], "Press Select to");
         if (onSelected) {
             strcpy(lcdBuf[1], "toggle Vac. on  ");
-            vacControl(false); // vac OFF
+            vacControl(false, true); // vac OFF
         } else {
             strcpy(lcdBuf[1], "toggle Vac. off ");
-            vacControl(true); // vac ON
+            vacControl(true, true); // vac ON
         }
         printLcdBuf();
         lastPaint = *currentTime;
