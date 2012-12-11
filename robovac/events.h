@@ -38,6 +38,8 @@ void pollRxEvent(TimerInformation *Sender) {
 }
 
 void statusEvent(TimerInformation *Sender) {
+    SP("---\n");
+    printNodes();
     digitalWrite(statusLEDPin, LOW);
 }
 

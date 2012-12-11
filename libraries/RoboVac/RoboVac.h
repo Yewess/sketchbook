@@ -38,13 +38,13 @@
 #define SERVOPOWERTIME ((unsigned long) 100) // ms to wait for servo's to power up/down
 #define SERVOMOVETIME ((unsigned long) 500) // ms to wait for servo's to move
 #define VACPOWERTIME ((unsigned long) 10000) // ms minimum vac must be powered on
-#define LCDSLEEPTIME ((unsigned long) 300000) // ms to sleep if no activity
+#define LCDSLEEPTIME ((unsigned long) 120000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned long) 30000) // ms before menu activity times out
 #define LCDBLINKTIME ((unsigned long) 100) // ms to turn backlight off during blink
 #define LCDRARROW 126 //  right arrow character
 #define LCDLARROW 127 // left arrow character
 #define LCDBLOCK 255 // Block Character
-#define SERVOINCDEC 5 // amount to move hi/lo range
+#define SERVOINCDEC 1 // amount to move hi/lo range
 
 // constants
 const int lcdRows = 2;

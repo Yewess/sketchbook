@@ -93,7 +93,7 @@ nodeInfo_t *findNode(byte node_id) {
 void setupNodeInfo(void) {
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
         nodeInfo[nodeCount].node_id = 0;
-        nodeInfo[nodeCount].port_id = 0;
+        nodeInfo[nodeCount].port_id = nodeCount * 2;
         nodeInfo[nodeCount].servo_min = servoCenterPW;
         nodeInfo[nodeCount].servo_max = servoCenterPW;
         nodeInfo[nodeCount].receive_count = 0;
@@ -105,7 +105,7 @@ void setupNodeInfo(void) {
 
 void printNodeInfo(nodeInfo_t *node) {
         SP("'"); SP(node->node_name);
-        SP("' #: "); SP(node->node_id);
+        SP("' Node: "); SP(node->node_id);
         SP(" Port: "); SP(node->port_id);
         SP(" Min: "); SP(node->servo_min);
         SP(" Max: "); SP(node->servo_max);
@@ -116,6 +116,7 @@ void printNodeInfo(nodeInfo_t *node) {
 
 void printNodes(void) {
     for (byte nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+            SP(nodeCount); SP(") ");
             printNodeInfo(&(nodeInfo[nodeCount]));
     }
 }

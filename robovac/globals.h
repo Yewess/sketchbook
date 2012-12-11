@@ -9,7 +9,7 @@
 #define POLLINTERVAL (25) // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
 #define LCDINTERVAL (9) // Must poll LCD buttons fast
-#define STATUSINTERVAL (1015) // DEBUGGING and LCD updates
+#define STATUSINTERVAL (3015) // DEBUGGING and LCD updates
 #define BUTTONCHANGE (300) // minimum time between button changes
 #define GOODMSGMIN (2) // Minimum number of good messages in...
 #define THRESHOLD (6000) // ..6 second reception threshold, to signal start
