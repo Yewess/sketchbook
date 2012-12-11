@@ -30,18 +30,20 @@
 #define TXINTERVAL 1002 // Miliseconds between transmits
 #define RXTXBAUD 300 // Rf Baud
 #define SERIALBAUD 115200
-#define NODENAMEMAX 27 // name characters + 1
+#define NODENAMEMAX (lcdCols + 1) // name characters + 1 for NULL
 #define MAXNODES 6 // number of nodes to keep track of
+#define OPENALLPORT 253 // id that opens all ports
+#define CLOSEALLPORT 254 // id that closes all ports
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1
-#define SERVOPOWERTIME ((unsigned int) 100) // ms to wait for servo's to power up/down
-#define SERVOMOVETIME ((unsigned int) 500) // ms to wait for servo's to move
-#define VACPOWERTIME ((unsigned int) 10000) // ms minimum vac must be powered on
-#define LCDSLEEPTIME ((unsigned int) 180000) // ms to sleep if no activity
-#define LCDMENUTIME ((unsigned int) 30000) // ms before menu activity times out
-#define LCDBLINKTIME ((unsigned int) 100) // ms to turn backlight off during blink
+#define SERVOPOWERTIME ((unsigned long) 100) // ms to wait for servo's to power up/down
+#define SERVOMOVETIME ((unsigned long) 500) // ms to wait for servo's to move
+#define VACPOWERTIME ((unsigned long) 10000) // ms minimum vac must be powered on
+#define LCDSLEEPTIME ((unsigned long) 300000) // ms to sleep if no activity
+#define LCDMENUTIME ((unsigned long) 30000) // ms before menu activity times out
+#define LCDBLINKTIME ((unsigned long) 100) // ms to turn backlight off during blink
 #define LCDRARROW 126 //  right arrow character
 #define LCDLARROW 127 // left arrow character
-#define LCDDARROW 4 // Down Arrow
+#define LCDBLOCK 255 // Block Character
 #define SERVOINCDEC 5 // amount to move hi/lo range
 
 // constants
@@ -184,7 +186,7 @@ boolean validMessage(const message_t *message);
 
 const unsigned long *timerExpired(const unsigned long *currentTime,
                                   const unsigned long *lastTime,
-                                  unsigned int interval);
+                                  unsigned long interval);
 
 char nibbleToHexChar(byte nibble);
 const char *byteHexString(byte thebyte);

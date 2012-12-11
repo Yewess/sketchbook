@@ -48,7 +48,7 @@ boolean validMessage(const message_t *message) {
 
 const unsigned long *timerExpired(const unsigned long *currentTime,
                                   const unsigned long *lastTime,
-                                  unsigned int interval) {
+                                  unsigned long interval) {
     static unsigned long elapsedTime=0;
 
     if (*currentTime < *lastTime) { // currentTime has wrapped
@@ -81,7 +81,7 @@ const char *byteHexString(byte thebyte) {
     static char buf[3] = {'\0'};
 
     // Convert a node's port ID to hexidecimal 2-char string & return static buf
-    buf[0] = nibbleToHexChar(thebyte & 0xF0);
+    buf[0] = nibbleToHexChar((thebyte & 0xF0) >> 4);
     buf[1] = nibbleToHexChar(thebyte & 0x0F);
     return buf;
 }

@@ -8,9 +8,9 @@
 // Constants used once (to save space)
 #define POLLINTERVAL (25) // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
-#define LCDINTERVAL (STATEINTERVAL+14) // UI can be a bit slower
+#define LCDINTERVAL (9) // Must poll LCD buttons fast
 #define STATUSINTERVAL (1015) // DEBUGGING and LCD updates
-#define BUTTONCHANGE (100) // minimum time between button changes
+#define BUTTONCHANGE (300) // minimum time between button changes
 #define GOODMSGMIN (2) // Minimum number of good messages in...
 #define THRESHOLD (6000) // ..6 second reception threshold, to signal start
 #define CHARLOWER (32) // lower limit for node id name ASCII character
@@ -30,6 +30,11 @@ const int vacPowerControlPin = 2;
 const int servoCenterPW = int(PWMCENTER);
 const int servoMinPW = int(PWMMIN);
 const int servoMaxPW = int(PWMMAX);
+const int lcdDArrow = 4; // Down arrow character ID
+const int lcdUArrow = 5; // Up arrow character ID
+const int lcdRArrow = 126; //  right arrow character ID
+const int lcdLArrow = 127; // left arrow character ID
+
 
 /* globals */
 
@@ -56,7 +61,7 @@ unsigned long lastButtonChange; // last time button state changed
 menuEntry_t *currentMenu; // Current entry point in menu
 menuEntryCallback_t currentCallback = NULL; // address of currently running callback
 const char lcdPortIDLine[] = "Port# xx ID# xx ";
-const char lcdRangeLine[] =  "Lo:xxxx Hi:xxxx ";
+const char lcdRangeLine[] =  "Lxxxx    Hxxxx  ";
 uint8_t downArrowChar[] = {B00000,
                            B00000,
                            B00100,
@@ -65,6 +70,15 @@ uint8_t downArrowChar[] = {B00000,
                            B01110,
                            B00100,
                            B00000};
+
+uint8_t UpArrowChar[] = {B00000,
+                         B00100,
+                         B01110,
+                         B10101,
+                         B00100,
+                         B00100,
+                         B00000,
+                         B00000};
 
 // I2C Device init.
 Adafruit_RGBLCDShield lcd = Adafruit_RGBLCDShield();

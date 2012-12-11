@@ -39,7 +39,6 @@ void pollRxEvent(TimerInformation *Sender) {
 
 void statusEvent(TimerInformation *Sender) {
     digitalWrite(statusLEDPin, LOW);
-    printNodes();
 }
 
 void lcdEvent(TimerInformation *Sender) {
@@ -47,12 +46,17 @@ void lcdEvent(TimerInformation *Sender) {
     uint8_t new_buttons=0;
 
     new_buttons = lcd.readButtons();
-    if ((new_buttons != lcdButtons) &&
-        timerExpired(&currentTime, &lastButtonChange, BUTTONCHANGE)) {
+    if (new_buttons != lcdButtons) {
         lastButtonChange = currentTime;
         lcdButtons = new_buttons;
-    } else { // assume buttons were handled
-        lcdButtons = 0;
+    } else { // no change
+        if ((lcdButtons != 0) && timerExpired(&currentTime, &lastButtonChange, BUTTONCHANGE)) {
+            lastButtonChange = currentTime;
+            // allow second press through
+        } else {
+            // block second press of same button in < BUTTONCHANGE ms
+            lcdButtons = 0;
+        }
     }
     // Clears lcdButtons that were handled
     handleLCDState(&currentTime);

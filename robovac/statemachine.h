@@ -26,7 +26,7 @@ void updateState(vacstate_t newState, unsigned long *currentTime) {
         memcpy(runningBuf[0], &(stateStr[4]), strlen(stateStr) - 4);
         if (currentActive) {
             memcpy(runningBuf[1],
-                   currentActive->node_name, strlen(currentActive->node_name) );
+                   currentActive->node_name, NODENAMEMAX-1 );
         }
         actionState = newState;
         lastStateChange = *currentTime;
@@ -133,7 +133,7 @@ void handleActionState(unsigned long *currentTime) {
 
         case VAC_SERVOSTANDBY:
             // ignore any nodes comming online, must go through VAC_SERVOSTANDBY
-            moveServos(0); // open all ports
+            moveServos(OPENALLPORT); // open all ports
             if (timerExpired(currentTime, &lastStateChange, SERVOMOVETIME)) {
                 updateState(VAC_SERVOPOSTPOWERDN, currentTime);
             } // else wait longer

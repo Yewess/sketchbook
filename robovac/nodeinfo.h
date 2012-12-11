@@ -98,29 +98,25 @@ void setupNodeInfo(void) {
         nodeInfo[nodeCount].servo_max = servoCenterPW;
         nodeInfo[nodeCount].receive_count = 0;
         nodeInfo[nodeCount].last_heard = 0;
-        for (int nameChar=0; nameChar < (NODENAMEMAX); nameChar++) {
-            nodeInfo[nodeCount].node_name[nameChar] = '\0';
-        }
+        strcpy(nodeInfo[nodeCount].node_name, "                \0");
     }
 }
 
 
 void printNodeInfo(nodeInfo_t *node) {
-        D(node->node_name);
-        D(" #: "); D(node->node_id);
-        D(" Port: "); D(node->port_id);
-        D(" Min: "); D(node->servo_min);
-        D(" Max: "); D(node->servo_max);
-        D(" Msgs: "); D(node->receive_count);
-        D(" last ms: "); D(node->last_heard);
-        D("\n");
+        SP("'"); SP(node->node_name);
+        SP("' #: "); SP(node->node_id);
+        SP(" Port: "); SP(node->port_id);
+        SP(" Min: "); SP(node->servo_min);
+        SP(" Max: "); SP(node->servo_max);
+        SP(" Msgs: "); SP(node->receive_count);
+        SP(" last ms: "); SP(node->last_heard);
+        SP("\n");
 }
 
 void printNodes(void) {
     for (byte nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        if (nodeInfo[nodeCount].last_heard > 0) {
             printNodeInfo(&(nodeInfo[nodeCount]));
-        }
     }
 }
 
@@ -168,12 +164,13 @@ void readNodeIDServoMap(void) {
         D(".");
 
         // node_name (NODENAMEMAX-1 bytes)
-        for (int nameChar=0; nameChar < (NODENAMEMAX-1); nameChar++) {
+        for (int nameChar=0; nameChar < (NODENAMEMAX-2); nameChar++) {
             nodeInfo[nodeCount].node_name[nameChar] = EEPROM.read(address);
             address++;
-            if (nodeInfo[nodeCount].node_name[nameChar] == 255) {
+            if ((nodeInfo[nodeCount].node_name[nameChar] < CHARLOWER) ||
+                (nodeInfo[nodeCount].node_name[nameChar] > CHARUPPER) ){
                 // uninitialized EEPROM
-                nodeInfo[nodeCount].node_name[nameChar] = '\0';
+                nodeInfo[nodeCount].node_name[nameChar] = ' ';
             }
         }
         nodeInfo[nodeCount].node_name[NODENAMEMAX-1] = '\0'; // not stored
@@ -226,13 +223,14 @@ void writeNodeIDServoMap(void) {
         address += 2;
 
         // Only write name bytes that changed
-        for (int nameChar=0; nameChar < (NODENAMEMAX-1); nameChar++) {
+        for (int nameChar=0; nameChar < (NODENAMEMAX-2); nameChar++) {
             currentByte = EEPROM.read(address);
             if (currentByte != nodeInfo[nodeCount].node_name[nameChar]) {
                 EEPROM.write(address, nodeInfo[nodeCount].node_name[nameChar]);
                 address++;
+            } else {
+                address++;
             }
-            address++;
         }
         // nodeInfo[nodeCount].node_name[NODENAMEMAX-1] always init to '\0'
     }

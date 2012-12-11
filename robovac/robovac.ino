@@ -27,7 +27,7 @@
 */
 
 #define DEBUG // DEBUGGING ON
-//#undef DEBUG // DEBUGGING OFF
+#undef DEBUG // DEBUGGING OFF
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -73,24 +73,23 @@ void setup() {
 
     // Initialize array
     setupNodeInfo();
-
-    // Load stored data
+#ifdef DEBUG
+    writeNodeIDServoMap(); // clear everything
+#else
     readNodeIDServoMap();
+#endif // DEBUG
+
 #ifdef DEBUG
     for (byte n=0; n<MAXNODES; n++) {
         nodeInfo[n].node_id = n;
-        nodeInfo[n].port_id = n+1;
+        nodeInfo[n].port_id = n * 2;
         nodeInfo[n].servo_min = 300 - n;
         nodeInfo[n].servo_max = 400 + n;
-        strcpy(nodeInfo[n].node_name, "Test Node  ");
+        strcpy(nodeInfo[n].node_name, "Test Node       ");
         nodeInfo[n].node_name[10] = n + 48;
     }
 
-    nodeInfo[1].node_id = 7;
-    nodeInfo[1].port_id = 3;
-    nodeInfo[1].servo_min = 300;
-    nodeInfo[1].servo_max = 400;
-    strcpy(nodeInfo[1].node_name, "Test Node 7");
+    nodeInfo[0].node_id = 7;
 #endif // DEBUG
     // Debugging info.
     printNodes();

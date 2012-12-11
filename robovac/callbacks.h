@@ -9,11 +9,9 @@ extern menuEntry_t m_setup;
 
 boolean blinkBacklight(unsigned long *currentTime) {
     if (timerExpired(currentTime, &lastButtonChange, LCDBLINKTIME)) {
-        D("Light\n");
         lcd.setBacklight(0x1); // ON
         return true;
     } else {
-        D("Dark\n");
         lcd.setBacklight(0x0); // OFF
         return false;
     }
@@ -33,8 +31,8 @@ void handleButtons(unsigned long *currentTime) {
             currentMenu = currentMenu->child;
             drawMenu();
         } else if (currentMenu->callback) {
+            lastButtonChange = *currentTime; // Don't process in callback also
             currentCallback = currentMenu->callback;
-            lcdButtons = 0; // Don't process in callback also
         } else { // Nav. Error Blink
             currentCallback = blinkBacklight;
         }
@@ -54,8 +52,8 @@ void handleButtons(unsigned long *currentTime) {
             currentMenu = currentMenu->child;
             drawMenu();
         } else if (currentMenu->callback) {
+            lastButtonChange = *currentTime; // Don't process in callback also
             currentCallback = currentMenu->callback;
-            lcdButtons = 0; // Don't process in callback also
         } else { // Nav. Error Blink
             currentCallback = blinkBacklight;
         }
@@ -75,6 +73,8 @@ void handleCallbackButtons(unsigned long *currentTime) {
         if ( (*currentCallback)(currentTime) == true) {
             currentCallback = NULL;
             drawMenu();
+            lcdButtons = 0;
+            lastButtonChange = *currentTime; // Don't process last button again
         }
     } else {
         handleButtons(currentTime);
@@ -83,46 +83,36 @@ void handleCallbackButtons(unsigned long *currentTime) {
 }
 
 boolean monitorCallback(unsigned long *currentTime) {
-    static unsigned long lastPaint=0;
     nodeInfo_t *node=NULL;
 
     if (lcdButtons) { // any key pressed
         // reset all node counters
         updateNodes(NULL);
-        lcdButtons = 0;
         monitorMode = false;
         return true;
     }
     monitorMode = true; // Don't turn on anything
     // update lcdBuf & print every STATUSINTERVAL
-    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
-        lastPaint = *currentTime;
-        clearLcdBuf();
-        node = activeNode(currentTime, true); // Bypass GOODMSGMIN
-        if (node) {
-            strcpy(lcdBuf[0], node->node_name);
-            if (strlen(node->node_name) < lcdCols) {
-                memset(&(lcdBuf[0][strlen(node->node_name)]),
-                       int(' '),
-                       lcdCols - strlen(node->node_name));
-            }
-            strcpy(lcdBuf[1], lcdPortIDLine);
-            // port ID w/o NULL terminator
-            memcpy(&(lcdBuf[1][6]), byteHexString(node->port_id), 2);
-            // node ID w/o NULL terminator
-            memcpy(&(lcdBuf[1][13]), byteHexString(node->node_id), 2);
-            if (node->receive_count >= GOODMSGMIN) {
-                lcdBuf[1][15] = '!';
-            }
-        } else if (message.node_id) {
-            strcpy(lcdBuf[0], "Unknown Node    ");
-            strcpy(lcdBuf[1], "Node ID# xx     ");
-            memcpy(&(lcdBuf[1][9]), byteHexString(message.node_id), 2);
-        } else {
-            strcpy(lcdBuf[0], "Monitoring...   ");
+    clearLcdBuf();
+    node = activeNode(currentTime, true); // Bypass GOODMSGMIN
+    if (node) {
+        strcpy(lcdBuf[0], node->node_name);
+        strcpy(lcdBuf[1], lcdPortIDLine);
+        // port ID w/o NULL terminator
+        memcpy(&(lcdBuf[1][6]), byteHexString(node->port_id), 2);
+        // node ID w/o NULL terminator
+        memcpy(&(lcdBuf[1][13]), byteHexString(node->node_id), 2);
+        if (node->receive_count >= GOODMSGMIN) {
+            lcdBuf[1][15] = '!';
         }
-        printLcdBuf();
+    } else if (message.node_id) {
+        strcpy(lcdBuf[0], "Unknown Node    ");
+        strcpy(lcdBuf[1], "Node ID# xx     ");
+        memcpy(&(lcdBuf[1][9]), byteHexString(message.node_id), 2);
+    } else {
+        strcpy(lcdBuf[0], "Monitoring...   ");
     }
+    printLcdBuf();
     return false;
 }
 
@@ -136,51 +126,33 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
     char curch;
     static boolean blinkOn=false;
 
-    blinkOn = !blinkOn;
-
     // Write screen template
     clearLcdBuf();
     strcpy(lcdBuf[0], lcdPortIDLine);
     strcpy(lcdBuf[1], node->node_name);
-    // pad node name with blanks
-    if (strlen(node->node_name) < lcdCols) {
-        memset(&(lcdBuf[1][strlen(node->node_name)]),
-               int(' '),
-               lcdCols - strlen(node->node_name));
-    }
     // draw IDs
     memcpy(&(lcdBuf[0][6]), byteHexString(node->port_id), 2);
     memcpy(&(lcdBuf[0][13]), byteHexString(node->node_id), 2);
     // draw selection
-    if (blinkOn) {
+    if (blinkOn | !changing) {
         if (nodeIDField) {
-            lcdBuf[0][12] = LCDRARROW;
-            lcdBuf[0][15] = LCDLARROW;
+            lcdBuf[0][12] = lcdRArrow;
+            lcdBuf[0][15] = lcdLArrow;
         } else { // name selection
-            lcdBuf[0][5] = LCDDARROW;
-            lcdBuf[0][8] = LCDDARROW;
-            lcdBuf[0][12] = LCDDARROW;
-            lcdBuf[0][15] = LCDDARROW;
+            lcdBuf[0][5] =  lcdDArrow;
+            lcdBuf[0][8] =  lcdDArrow;
+            lcdBuf[0][12] = lcdDArrow;
+            lcdBuf[0][15] = lcdDArrow;
         }
     }
     // draw cursor
     if (changing) {
-        lcd.cursor();
-        lcd.blink();
         if (nodeIDField) {
             lcd.setCursor(14, 0);
         } else { // changing name
             lcd.setCursor(position, 1);
             curch = node->node_name[position];
         }
-    } else { // not changing
-        lcd.noCursor();
-        lcd.noBlink();
-    }
-
-    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
-        printLcdBuf();
-        lastPaint = *currentTime;
     }
 
     // handle key presses
@@ -188,7 +160,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
         if (lcdButtons & BUTTON_RIGHT) {
             if (changing) {
                 if (!nodeIDField) { // name change
-                    if (position == 15) {
+                    if (position == NODENAMEMAX-2) {
                         position = 0;
                     } else {
                         position++;
@@ -196,6 +168,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
                 } // else do nothing for nodeIDField
             } else { // Select other field
                 nodeIDField = !nodeIDField;
+                position=0;
             }
         }
         if (lcdButtons & BUTTON_LEFT) {
@@ -204,7 +177,6 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
                 position=0;
                 changing=false;
                 nodeIDField=true;
-                monitorMode = false;
                 lastPaint=0;
                 lcd.noCursor();
                 lcd.noBlink();
@@ -215,7 +187,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
             } else {
                 if (!nodeIDField) { // name change
                     if (position == 0) {
-                        position = 15;
+                        position = NODENAMEMAX-2;
                     } else {
                         position--;
                     }
@@ -224,6 +196,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
         }
         if (lcdButtons & BUTTON_UP) {
             if (!changing) {
+                position=0;
                 if (node_index >= (MAXNODES - 1)) {
                     node_index = 0;
                 } else {
@@ -231,11 +204,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
                 }
             } else { // character change
                 if (nodeIDField) {
-                    if (node->node_id >= 254) {
-                        node->node_id = 1;
-                    } else {
-                        node->node_id += 1;
-                    }
+                   node->node_id += 1; // will wrap automaticaly
                 } else { // name field
                     if (curch >= CHARUPPER) {
                         curch = CHARLOWER;
@@ -248,6 +217,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
         }
         if (lcdButtons & BUTTON_DOWN) {
             if (!changing) {
+                position=0;
                 if (node_index == 0) {
                     node_index = (MAXNODES - 1);
                 } else {
@@ -255,11 +225,7 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
                 }
             } else { // character change
                 if (nodeIDField) {
-                    if (node->node_id <= 1) {
-                        node->node_id = 254;
-                    } else {
-                        node->node_id -= 1;
-                    }
+                    node->node_id -= 1; // will wrap automaticaly
                 } else { // name field
                     if (curch <= CHARLOWER) {
                         curch = CHARUPPER;
@@ -275,8 +241,15 @@ boolean portIDSetupCallback(unsigned long *currentTime) {
         }
     }
 
-    // HiJack monitor mode to freeze vac state machine
-    monitorMode = true;
+    if (timerExpired(currentTime, &lastPaint, BUTTONCHANGE)) {
+        blinkOn = !blinkOn;
+        lastPaint = *currentTime;
+        if ((!blinkOn) & changing & (!nodeIDField)){ // Draw the cursor
+            lcdBuf[1][position] = LCDBLOCK;
+        }
+    }
+    printLcdBuf();
+
     return false; // keep looping
 }
 
@@ -288,6 +261,7 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
     word minmax = 0;
     byte minmaxMSB = 0;
     byte minmaxLSB = 0;
+    int blinkOn=0;
 
     // make sure servos are on
     servoControl(true);
@@ -295,34 +269,38 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
     // Write screen template
     clearLcdBuf();
     strcpy(lcdBuf[0], lcdPortIDLine);
+    // draw IDs
+    memcpy(&(lcdBuf[0][6]), byteHexString(node->port_id), 2);
+    memcpy(&(lcdBuf[0][13]), byteHexString(node->node_id), 2);
     if (!changing) {
         strcpy(lcdBuf[1], node->node_name);
-        // pad node name with blanks
-        if (strlen(node->node_name) < lcdCols) {
-            memset(&(lcdBuf[1][strlen(node->node_name)]),
-                   int(' '),
-                   lcdCols - strlen(node->node_name));
-        }
     } else { // draw hi/lo instead of name
-        strcpy(lcdBuf[1], lcdRangeLine);
+        strcpy(lcdBuf[1], lcdRangeLine); // text
+        // arrows
+        if (blinkOn % 2) { // Blink on even numbers
+            lcdBuf[1][5] = lcdLArrow;
+            lcdBuf[1][6] = lcdRArrow;
+            lcdBuf[1][14] = lcdUArrow;
+            lcdBuf[1][15] = lcdDArrow;
+        } else { // Blink off on odd numbers
+            lcdBuf[1][6] = lcdLArrow;
+            lcdBuf[1][5] = lcdRArrow;
+            lcdBuf[1][15] = lcdUArrow;
+            lcdBuf[1][14] = lcdDArrow;
+
+        }
         // first low
         minmax = node->servo_min;
         minmaxMSB = highByte(minmax);
         minmaxLSB = lowByte(minmax);
-        memcpy(&(lcdBuf[1][3]), byteHexString(minmaxMSB), 2);
-        memcpy(&(lcdBuf[1][5]), byteHexString(minmaxLSB), 2);
+        memcpy(&(lcdBuf[1][1]), byteHexString(minmaxMSB), 2);
+        memcpy(&(lcdBuf[1][3]), byteHexString(minmaxLSB), 2);
         // last high
         minmax = node->servo_max;
         minmaxMSB = highByte(minmax);
         minmaxLSB = lowByte(minmax);
-        memcpy(&(lcdBuf[1][11]), byteHexString(minmaxMSB), 2);
-        memcpy(&(lcdBuf[1][13]), byteHexString(minmaxLSB), 2);
-    }
-
-    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
-        printLcdBuf();
-        moveServos(node->port_id);
-        lastPaint = *currentTime;
+        memcpy(&(lcdBuf[1][10]), byteHexString(minmaxMSB), 2);
+        memcpy(&(lcdBuf[1][12]), byteHexString(minmaxLSB), 2);
     }
 
     // handle key presses
@@ -337,7 +315,6 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
             if (!changing) { // exit
                 node_index=0;
                 changing=false;
-                monitorMode = false;
                 lastPaint=0;
 #ifndef DEBUG
                 writeNodeIDServoMap(); // only updates changed info when not in debug
@@ -370,7 +347,7 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
                 }
             } else { // character change
                 // decrement high range
-                node->servo_min += SERVOINCDEC;
+                node->servo_max += SERVOINCDEC;
             }
         }
         if (lcdButtons & BUTTON_SELECT) {
@@ -389,13 +366,24 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
     } else if (node->servo_min < servoMinPW) {
         node->servo_min = servoMinPW;
     }
-    // HiJack monitor mode to freeze vac state machine
-    monitorMode = true;
+
+    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
+        blinkOn++;
+        if (blinkOn > 29) {
+            blinkOn = 0;
+        }
+        if (blinkOn < 15) {
+            moveServos(node->port_id);
+        } else {
+            moveServos(CLOSEALLPORT);
+        }
+        lastPaint = *currentTime;
+    }
+    printLcdBuf();
     return false; // keep looping
 }
 
 boolean portToggleCallback(unsigned long *currentTime) {
-    static unsigned long lastPaint=0;
     static byte node_index = 0;
     static boolean allOpen = false;
     nodeInfo_t *node = &(nodeInfo[node_index]);
@@ -405,7 +393,7 @@ boolean portToggleCallback(unsigned long *currentTime) {
 
     // initialize with all servos open
     if (!allOpen) {
-        moveServos(0);
+        moveServos(OPENALLPORT);
         delay(SERVOMOVETIME);
         allOpen = true;
     }
@@ -414,17 +402,9 @@ boolean portToggleCallback(unsigned long *currentTime) {
     clearLcdBuf();
     strcpy(lcdBuf[0], lcdPortIDLine);
     strcpy(lcdBuf[1], node->node_name);
-    // pad node name with blanks
-    if (strlen(node->node_name) < lcdCols) {
-        memset(&(lcdBuf[1][strlen(node->node_name)]),
-               int(' '),
-               lcdCols - strlen(node->node_name));
-    }
-
-    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
-        printLcdBuf();
-        lastPaint = *currentTime;
-    }
+    // draw IDs
+    memcpy(&(lcdBuf[0][6]), byteHexString(node->port_id), 2);
+    memcpy(&(lcdBuf[0][13]), byteHexString(node->node_id), 2);
 
     // handle key presses
     if (lcdButtons) {
@@ -437,8 +417,7 @@ boolean portToggleCallback(unsigned long *currentTime) {
                 node_index=0;
                 allOpen = false;
                 monitorMode = false;
-                lastPaint=0;
-                moveServos(0);
+                moveServos(OPENALLPORT);
                 delay(SERVOMOVETIME);
                 servoControl(false); // turn off
                 return true; // EXIT callback
@@ -472,42 +451,38 @@ boolean portToggleCallback(unsigned long *currentTime) {
     } else if (node->servo_min < servoMinPW) {
         node->servo_min = servoMinPW;
     }
+
     // HiJack monitor mode to freeze vac state machine
     monitorMode = true;
+    printLcdBuf();
     return false; // keep looping
 }
 
 boolean vacToggleCallback(unsigned long *currentTime) {
     static bool onSelected = true;
-    static unsigned long lastPaint=0;
 
     // HiJack monitor mode to freeze vac state machine
     if (lcdButtons) {
         if (lcdButtons & BUTTON_SELECT) {
             onSelected = !onSelected;
-            lastPaint=0;
         } else { // exit
             vacControl(false, true); // vac OFF
             onSelected = true;
             monitorMode = false;
-            lastPaint=0;
             return true;
         }
     }
 
-    if (timerExpired(currentTime, &lastPaint, STATUSINTERVAL)) {
-        clearLcdBuf();
-        strcpy(lcdBuf[0], "Press Select to");
-        if (onSelected) {
-            strcpy(lcdBuf[1], "toggle Vac. on  ");
-            vacControl(false, true); // vac OFF
-        } else {
-            strcpy(lcdBuf[1], "toggle Vac. off ");
-            vacControl(true, true); // vac ON
-        }
-        printLcdBuf();
-        lastPaint = *currentTime;
+    clearLcdBuf();
+    strcpy(lcdBuf[0], "Press Select to");
+    if (onSelected) {
+        strcpy(lcdBuf[1], "toggle Vac. on  ");
+        vacControl(false, true); // vac OFF
+    } else {
+        strcpy(lcdBuf[1], "toggle Vac. off ");
+        vacControl(true, true); // vac ON
     }
+    printLcdBuf();
 
     monitorMode = true;
     return false; // keep looping

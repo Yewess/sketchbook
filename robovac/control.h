@@ -18,15 +18,13 @@ void vacControl(boolean turnOn, boolean ignoreMonitorMode) {
     if (ignoreMonitorMode || !monitorMode) {
         if (turnOn == true) {
             digitalWrite(vacPowerControlPin, HIGH);
-            D("The Vac is ON\nr");
         } else {
             digitalWrite(vacPowerControlPin, LOW);
-            D("The Vac is OFF\nr");
         }
     }
 }
 
-void moveServos(unsigned char port_id) {
+void moveServos(byte port_id) {
     // will be called repeatidly until SERVOMOVETIME expires
     // port_id could change on any call
     int nodeCount=0;
@@ -34,7 +32,7 @@ void moveServos(unsigned char port_id) {
 
     for (nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
         node = &nodeInfo[nodeCount];
-        if ((port_id == 0) || (node->port_id == port_id)) {
+        if (node->port_id == port_id) {
             // OPEN
             pwm.setPWM(node->port_id, 0, node->servo_max);
         } else {

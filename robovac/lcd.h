@@ -31,7 +31,6 @@ inline void printLcdBuf(void) {
     for (int y=0; y<lcdRows; y++) {
         lcd.setCursor(0, y);
         lcd.print(lcdBuf[y]);
-        D(lcdBuf[y]); D("\n");
     }
 }
 
@@ -64,9 +63,8 @@ void drawMenu(void) {
     const char *highlight = itemHighlight(currentMenu);
 
     // so doesn't interfear with drawRunning
-    lcd.createChar(LCDDARROW, downArrowChar);
-
-    D("Menu:\n");
+    lcd.createChar(lcdDArrow, downArrowChar);
+    lcd.createChar(lcdUArrow, UpArrowChar);
     if (!currentCallback) { // they draw their own
         unsigned int above = itemsAbove(currentMenu);
         menuEntry_t *entryp = currentMenu;
