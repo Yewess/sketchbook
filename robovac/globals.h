@@ -25,7 +25,6 @@
 const int statusLEDPin = 13;
 const int rxDataPin = 12;
 const int signalStrengthPin = 0;
-const int servoPowerControlPin = 7;
 const int vacPowerControlPin = 2;
 const int servoCenterPW = int(PWMCENTER);
 const int servoMinPW = int(PWMMIN);
@@ -51,6 +50,9 @@ int signalStrength = 0;
 // System State
 vacstate_t actionState = VAC_SERVOPOSTPOWERUP; // make double-sure all ports open
 boolean monitorMode = false; // don't actually move servos / switch vac
+vacPower_t vacpower;
+unsigned long lastOnTime=0;
+unsigned long lastOffTime=0;
 
 // UI State
 char lcdBuf[lcdRows][lcdCols+1] = {'\0'};

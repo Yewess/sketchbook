@@ -6,10 +6,12 @@
 
 void servoControl(boolean turnOn) {
     if (!monitorMode) {
-        if (turnOn == true) {
-            digitalWrite(servoPowerControlPin, HIGH);
-        } else {
-            digitalWrite(servoPowerControlPin, LOW);
+        if (turnOn != true) {
+            int portCount;
+
+            for (portCount=0; portCount < MAXPORTS; portCount++) {
+                pwm.setPWM(portCount, 0, 0); // flatline == 'sleep mode'
+            }
         }
     }
 }

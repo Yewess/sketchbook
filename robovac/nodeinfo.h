@@ -100,6 +100,8 @@ void setupNodeInfo(void) {
         nodeInfo[nodeCount].last_heard = 0;
         strcpy(nodeInfo[nodeCount].node_name, "                \0");
     }
+    vacpower.VacPowerTime = 0;
+    vacpower.VacOffTime = 0;
 }
 
 
@@ -178,6 +180,16 @@ void readNodeIDServoMap(void) {
         D(".");
     }
     D("\n");
+
+    D("Read intvl info.");
+    for (int byteCount=0; byteCount < sizeof(vacPower_t); byteCount++) {
+        byte *powerByte = ((byte *) &vacpower) + byteCount;
+
+        *powerByte = EEPROM.read(address);
+        address++;
+        D(".");
+    }
+    D("\n");
 }
 
 void writeNodeIDServoMap(void) {
@@ -234,6 +246,19 @@ void writeNodeIDServoMap(void) {
             }
         }
         // nodeInfo[nodeCount].node_name[NODENAMEMAX-1] always init to '\0'
+    }
+    D("\n");
+
+    D("Write intvl info.");
+    for (int byteCount=0; byteCount < sizeof(vacPower_t); byteCount++) {
+        byte *powerByte = ((byte *) &vacpower) + byteCount;
+
+        currentByte = EEPROM.read(address);
+        if (currentByte != *powerByte) {
+            EEPROM.write(address, *powerByte);
+            D(".");
+        }
+        address++;
     }
     D("\n");
 }

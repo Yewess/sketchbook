@@ -15,6 +15,7 @@ menuEntry_t n_mon = {"Monitor..."};
 menuEntry_t n_setup = {"Setup Menu "};
 menuEntry_t n_port =   {"Port/ID Setup..."};
 menuEntry_t n_travel = {"Travel Adjust..."};
+menuEntry_t n_power =  {"Power Timers..."};
 
 // Manual Control
 menuEntry_t n_manc = {"Manual Control "};
@@ -38,8 +39,10 @@ void menuSetup(void) {
     // Setup menu
     n_setup.next_sibling = &n_port;
     n_port.next_sibling = &n_travel;
+    n_travel.next_sibling = &n_power;
     n_port.prev_sibling = &n_setup;
     n_travel.prev_sibling = &n_port;
+    n_power.prev_sibling = &n_travel;
 
     // Manual Control
     n_manc.next_sibling = &n_portt;
@@ -51,6 +54,7 @@ void menuSetup(void) {
     n_mon.callback = monitorCallback;
     n_port.callback = portIDSetupCallback;
     n_travel.callback = travelAdjustCallback;
+    n_power.callback = powerTimersCallback;
     n_portt.callback = portToggleCallback;
     n_vact.callback = vacToggleCallback;
 

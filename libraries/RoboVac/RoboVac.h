@@ -31,13 +31,15 @@
 #define RXTXBAUD 300 // Rf Baud
 #define SERIALBAUD 115200
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1 for NULL
+#define MAXPORTS 16 // Total number of motor ports
 #define MAXNODES 6 // number of nodes to keep track of
 #define OPENALLPORT 253 // id that opens all ports
 #define CLOSEALLPORT 254 // id that closes all ports
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1
 #define SERVOPOWERTIME ((unsigned long) 100) // ms to wait for servo's to power up/down
 #define SERVOMOVETIME ((unsigned long) 500) // ms to wait for servo's to move
-#define VACPOWERTIME ((unsigned long) 10000) // ms minimum vac must be powered on
+#define VACPOWERTIME ((unsigned long) 5000) // Time for vac to spin up
+#define VACDOWNTIME ((unsigned long) 10000) // Time for vac to spin down
 #define LCDSLEEPTIME ((unsigned long) 120000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned long) 30000) // ms before menu activity times out
 #define LCDBLINKTIME ((unsigned long) 100) // ms to turn backlight off during blink
@@ -61,10 +63,11 @@ const int lcdCols = 16;
         STATE2CASE(VAR, VAC_SERVOACTION)\
         STATE2CASE(VAR, VAC_SERVOPOWERDN)\
         STATE2CASE(VAR, VAC_VACUUMING)\
-        STATE2CASE(VAR, VAC_VACPOWERDN)\
         STATE2CASE(VAR, VAC_SERVOPOSTPOWERUP)\
         STATE2CASE(VAR, VAC_SERVOSTANDBY)\
         STATE2CASE(VAR, VAC_SERVOPOSTPOWERDN)\
+        STATE2CASE(VAR, VAC_VACPOWERDN)\
+        STATE2CASE(VAR, VAC_COOLDOWN)\
         STATE2CASE(VAR, VAC_ENDSTATE)\
         default: VAR = "MISSING STATE!!!\0"; break;\
     }\
@@ -142,10 +145,11 @@ typedef enum vacstate_e {
     VAC_SERVOACTION, // Moving Servos
     VAC_SERVOPOWERDN, // Powering down servos
     VAC_VACUUMING, // Waiting for down threshold
-    VAC_VACPOWERDN, // Powering down vacuum
     VAC_SERVOPOSTPOWERUP, // Powering up servos again
     VAC_SERVOSTANDBY,     // open all ports
     VAC_SERVOPOSTPOWERDN, // Powering down servos again
+    VAC_VACPOWERDN, // Powering down vacuum
+    VAC_COOLDOWN, // mandatory cooldown period
     VAC_ENDSTATE, // Return to listening
 } vacstate_t;
 
@@ -164,6 +168,10 @@ typedef struct message_s {
     unsigned long up_time; // number of miliseconds running
 } message_t;
 
+typedef struct vacPower_s {
+    word VacPowerTime; // Min. ON time in seconds
+    word VacOffTime; // Cooldown time in seconds
+} vacPower_t;
 
 // Returns true when finished, false if still running
 typedef boolean (*menuEntryCallback_t)(unsigned long *currentTime);

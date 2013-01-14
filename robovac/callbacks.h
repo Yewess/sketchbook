@@ -443,6 +443,103 @@ boolean travelAdjustCallback(unsigned long *currentTime) {
     return false; // keep looping
 }
 
+boolean powerTimersCallback(unsigned long *currentTime) {
+    static unsigned long lastPaint=0;
+    static boolean changing = false; // currently modifying entry
+    static boolean change_VacPowerTime = true;
+    static boolean blinkOn = true;
+    byte timeMSB = 0;
+    byte timeLSB = 0;
+
+    // handle key presses
+    if (lcdButtons) {
+        // Right button does nothing
+
+        if (lcdButtons & BUTTON_LEFT) {
+            if (!changing) { // exit
+                changing=false;
+                lastPaint=0;
+                change_VacPowerTime = true;
+#ifndef DEBUG
+                writeNodeIDServoMap(); // only updates changed info when not in debug
+#endif
+                return true; // EXIT callback
+        }
+        if (lcdButtons & BUTTON_UP) {
+            if (!changing) {
+                change_VacPowerTime = !change_VacPowerTime;
+            } else { // number change
+                if (change_VacPowerTime) {
+                    vacpower.VacPowerTime += 10;
+                } else {
+                    vacpower.VacOffTime += 10;
+                }
+            }
+        }
+        if (lcdButtons & BUTTON_DOWN) {
+            if (!changing) {
+                change_VacPowerTime = !change_VacPowerTime;
+            } else { // number change
+                if (change_VacPowerTime) {
+                    vacpower.VacPowerTime -= 10;
+                } else {
+                    vacpower.VacOffTime -= 10;
+                }
+            }
+        }
+        if (lcdButtons & BUTTON_SELECT) {
+            changing = !changing;
+        }
+    }
+
+    // constrain minmax to range
+    if (vacpower.VacPowerTime > 3600) {
+        vacpower.VacPowerTime = 3600;
+    } else if (vacpower.VacPowerTime < 20) {
+        vacpower.VacPowerTime = 20;
+    }
+    if (vacpower.VacOffTime > 14400) {
+        vacpower.VacOffTime = 14400;
+    } else if (vacpower.VacOffTime < 20) {
+        vacpower.VacOffTime = 20;
+    }
+
+    // Write screen template
+    clearLcdBuf();
+    strcpy(lcdBuf[0], "Min On  XXXXsec ");
+    strcpy(lcdBuf[1], "Cool Dn XXXXsec ");
+
+    // Handle blink & selector arrows
+    if (blinkOn || changing) {
+        // arrows
+        if (change_VacPowerTime) {
+            lcdBuf[0][7] = lcdLArrow;
+            lcdBuf[0][15] = lcdRArrow;
+        } else {
+            lcdBuf[1][7] = lcdUArrow;
+            lcdBuf[1][15] = lcdDArrow;
+        }
+    }
+
+    // Draw numbers
+    timeMSB = highByte(vacpower.VacPowerTime);
+    timeLSB = lowByte(vacpower.VacPowerTime);
+    memcpy(&(lcdBuf[0][8]), byteHexString(timeMSB), 2);
+    memcpy(&(lcdBuf[0][10]), byteHexString(timeMSB), 2);
+    timeMSB = highByte(vacpower.VacOffTime);
+    timeLSB = lowByte(vacpower.VacOffTime);
+    memcpy(&(lcdBuf[1][8]), byteHexString(timeMSB), 2);
+    memcpy(&(lcdBuf[1][10]), byteHexString(timeLSB), 2);
+
+    if (timerExpired(currentTime, &lastPaint, 1000)) {
+        blinkOn = !blinkOn;
+        lastPaint = *currentTime;
+    }
+    printLcdBuf();
+    return false; // keep looping
+}
+
+
 boolean portToggleCallback(unsigned long *currentTime) {
     static byte node_index = 0;
     nodeInfo_t *node = &(nodeInfo[node_index]);
