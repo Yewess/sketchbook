@@ -24,15 +24,12 @@
     virtual wire: http://www.open.com.au/mikem/arduino/
 */
 
-#include <TimedEvent.h>
 #include <VirtualWire.h>
 #include <RoboVac.h>
 
-/* Externals */
-
 /* Definitions */
-#define DEBUG
 #define NODEID 0x01
+#undef DEBUG
 
 // Constants used once (to save space)
 #define SENSEINTERVAL 101
@@ -47,18 +44,14 @@
 #define ACWAVELENGTH (1000000.0/(ACHERTZ))
 // Number of microseconds per sample (MUST be larger than AnalogRead)
 #define MICROSPERSAMPLE ((ACWAVELENGTH) / (SAMPLESPERWAVE))
-// Threshold Sensitivity
-#define THRESHOLDLIMIT (127)
 
 /* Types */
 
 /* I/O constants */
-const int thresholdPin = A1;
-const int statusLEDPin = 13;
-const int txEnablePin = 7;
-const int txDataPin = 8;
-const int currentSensePin = A0;
-const int overridePin = 12;
+const int txEnablePin = 1;
+const int txDataPin = 0;
+const int currentSensePin = 5;
+const int overridePin = 2;
 
 /* Global Variables */
 message_t message;
@@ -67,11 +60,16 @@ int sampleLow = 0;
 int sampleHigh = 0;
 int sampleRange = 0;
 int threshold = 0;
-unsigned long overrideTime = 0; // millis when manual override expires
+unsigned long txInterval = long(TXINTERVAL);
+unsigned long currentTime = 0; // current ms
+unsigned long overrideTime = 0; // current Interval of override mode
+unsigned long lastOvertide = 0; // first time override button pressed
+unsigned long lastTXEvent = 0; // ms since last entered txEvent()
+unsigned long lastCurrentEvent = 0; // ms since last entered updateCurrentEvent()
 
 /* Functions */
 
-void txEvent(TimerInformation *Sender) {
+void txEvent(void) {
     if (thresholdBreached()) {
         digitalWrite(txEnablePin, HIGH);
         makeMessage(&message, byte(NODEID));
@@ -87,7 +85,7 @@ void txEvent(TimerInformation *Sender) {
     }
 }
 
-void updateCurrentEvent(TimerInformation *Sender) {
+void updateCurrentEvent(void) {
     char index=0;
     char sample=0;
 
@@ -96,7 +94,6 @@ void updateCurrentEvent(TimerInformation *Sender) {
     sampleLow = 0;
     sampleRange = 0;
 
-    threshold = map( analogRead(thresholdPin), 0, 1023, 0, THRESHOLDLIMIT);
     // Fill data elements
     for (index=0; index< SAMPLESPERWAVE; index++) {
         sample= map( analogRead(currentSensePin),
@@ -115,45 +112,44 @@ void updateCurrentEvent(TimerInformation *Sender) {
 
 boolean thresholdBreached() {
     if (sampleRange >= threshold) {
-        overrideTime = 0;
+        overrideTime = 0; // Cancel override mode
+        lastOvertide = 0;
         return true;
     } else { // under threshold
-        if (overrideTime > millis()) {
-            return true; // still in override
-        } else {
+        if (overrideTime > 0) { // in override
+            // update override timer
+            if (timerExpired(&currentTime, &lastOvertide, overrideTime)) {
+                // override mode finished
+                overrideTime = 0;
+                lastOvertide = 0;
+                return false;
+            } else {
+                // in override mode
+                return true;
+            }
+        } else { // not in override
             overrideTime = 0;
-            return false; // not in override
+            lastOvertide = 0;
+            return false;
         }
     }
 }
 
 void incOverrideTime(void) {
-    unsigned long currentTime = millis();
-    // FIXME: This will break if currentMillies wraps during override
-    if (overrideTime > currentTime) {
-        // Still override time in timer
-        overrideTime += (OVERRIDEAMOUNT);
-        D("Override +: ");D(OVERRIDEAMOUNT);
-    } else if (overrideTime < currentTime) { // less than currentMillis
-        // First press
-        overrideTime = currentTime + (OVERRIDEAMOUNT);
-        D("Override by: ");D(OVERRIDEAMOUNT);
+    // Check if already in override mode or not
+    if (overrideTime > 0) {
+        // In overrdie, add more.
+        overrideTime += OVERRIDEAMOUNT;
+    } else {
+        // not in override
+        overrideTime = OVERRIDEAMOUNT; // enter override
+        // Remember when this happened
+        lastOvertide = currentTime;
     }
-    D("\n");
-}
-
-void printStatusEvent(TimerInformation *Sender) {
-    unsigned long currentTime = millis();
-
-    PRINTTIME(currentTime);
-    D(" \t threshold: "); D(threshold);
-    D("  SampleHigh: "); D(sampleHigh);
-    D("  SampleLow: "); D(sampleLow);
-    D("  SampleRange: "); D(sampleRange);
-    if (overrideTime > currentTime) {
-        D("  Override: "); D(overrideTime - currentTime);
-    }
-    D("\n");
+    // Signal to user time incremented
+    digitalWrite(txEnablePin, HIGH);
+    delay(txInterval / 2);
+    digitalWrite(txEnablePin, LOW);
 }
 
 /* Main Program */
@@ -163,22 +159,28 @@ void setup() {
     double stopTime = 0;
     double duration = 0;
 
-#ifdef DEBUG
-    Serial.begin(SERIALBAUD);
-#endif // DEBUG
     pinMode(txDataPin, OUTPUT);
+    digitalWrite(txDataPin, LOW);
     vw_set_tx_pin(txDataPin);
+
     pinMode(txEnablePin, OUTPUT);
-    vw_set_ptt_pin(statusLEDPin);
-    pinMode(statusLEDPin, OUTPUT);
-    digitalWrite(statusLEDPin, LOW);
-    pinMode(currentSensePin, INPUT);
+    digitalWrite(txEnablePin, LOW);
+    vw_set_ptt_pin(txEnablePin);
+
     pinMode(overridePin, INPUT);
+
+    pinMode(currentSensePin, INPUT);
+
     vw_setup(RXTXBAUD);
+
+    // Calibrate read speed
     // Capture the start time in microseconds
     startTime = (millis() * 1000) + micros();
     for (int counter = 0; counter < 10000; counter++) { // 10,000 analog reads for average (below)
-        analogRead(currentSensePin);
+        threshold = analogRead(currentSensePin);
+        if (threshold > sampleHigh) {
+            sampleHigh = constrain(threshold, 0, 127);
+        }
     }
     stopTime = (millis() * 1000) + micros();
     // Calculate duration in microseconds
@@ -186,44 +188,37 @@ void setup() {
     // divide the duration by number of reads
     analogReadMicroseconds = duration / 10000.0;
 
+    // set threshold to 10x highest value read (min of 10)
+    threshold = constrain(sampleHigh * 10, 10, 256);
+
     // Check Assumptions
     if (analogReadMicroseconds > MICROSPERSAMPLE) {
         while (1) {
-#ifdef DEBUG
-            D("Error: AnalogRead speed too slow!");
-#else
-            digitalWrite(statusLEDPin, HIGH);
+            // signal error, MICROSPERSAMPLE is too small!
+            digitalWrite(txEnablePin, HIGH);
             delay(250);
-            digitalWrite(statusLEDPin, LOW);
+            digitalWrite(txEnablePin, LOW);
             delay(250);
-            digitalWrite(statusLEDPin, HIGH);
+            digitalWrite(txEnablePin, HIGH);
             delay(250);
-            digitalWrite(statusLEDPin, LOW);
+            digitalWrite(txEnablePin, LOW);
             delay(1000);
-#endif // DEBUG
         }
     }
-
-    // Setup events
-    TimedEvent.addTimer(SENSEINTERVAL, updateCurrentEvent);
-    TimedEvent.addTimer(TXINTERVAL, txEvent);
-    TimedEvent.addTimer(STATUSINTERVAL, printStatusEvent);
-    D("setup()"); D(" Node ID: "); D(NODEID, DEC);
-    D("\ntxDataPin: "); D(txDataPin);
-    D("  txEnablePin: "); D(txEnablePin);
-    D("  statusLEDPin: "); D(statusLEDPin);
-    D("  currentSensePin: "); D(currentSensePin);
-    D("  overridePin: "); D(overridePin);
-    D("  RXTXBAUD: "); D(RXTXBAUD);
-    D("\n");
-    D("Threshold Limit: "); D(THRESHOLDLIMIT);
-    D("  Smp. Per. Intvl: "); D(SAMPLESPERWAVE);
-    D("  Smp. Duration: "); D(MICROSPERSAMPLE);
-    D("us  analogRead: ");
-    D(analogReadMicroseconds);
-    D("us\n");
 }
 
 void loop() {
-    TimedEvent.loop(); // blocking
+    currentTime = millis();
+    // Jiggle txInterval slightly to help avoid collisions
+    if (currentTime % 2) {
+        txInterval += TXINTERVAL / 2; // half as long more
+    } else {
+        txInterval = TXINTERVAL;
+    }
+    if (timerExpired(&currentTime, &lastCurrentEvent, SENSEINTERVAL)) {
+        updateCurrentEvent();
+    }
+    if (timerExpired(&currentTime, &lastTXEvent, txInterval)) {
+        txEvent();
+    }
 }
