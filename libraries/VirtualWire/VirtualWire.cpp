@@ -263,6 +263,27 @@ void vw_pll()
     }
 }
 
+// Common function for calculating prescaler value and ticks needed @ speed
+static void _timer_calc(const uint16_t *speed, boolean sixteenbit,
+                        uint16_t *nticks, uint8_t *prescaler)
+{
+    for (*prescaler=0; *prescaler < 5; *prescaler += 1)
+        // Clock divider values set in TCCRnB
+        uint16_t prescalers[] = {1, 8, 64, 256, 1024};
+        // Amount of time per CPU clock tick (in seconds)
+        float clock_time = (1.0 / (float(F_CPU) / float(prescalers[*prescaler])));
+        // fraction of second needed to xmit one bit
+        float bit_time = ((1.0 / float(*speed)) / 8.0);
+        // number of prescaled ticks needed to handle bit time @ speed
+        *nticks = uint16_t(bit_time / clock_time);
+        if ((!sixteenbit) && (*nticks < 255)) { // 8bit counter overflow
+            break; // found prescaler
+        } elif (sixteenbit) && (*nticks < 65535) { // 16bit counter overflow
+            break; // found prescaler
+        }
+    }
+    // Don't need to test for more b/c prescaler=1024 can handle speed=1
+}
 
 // Speed is in bits per sec RF rate
 #if defined(__MSP430G2452__) || defined(__MSP430G2553__) // LaunchPad specific
@@ -285,19 +306,57 @@ void vw_setup(uint16_t speed)
 }	
 
 #elif defined (ARDUINO) // Arduino specific
+
+#ifdef __AVR_ATtiny85__
+
 void vw_setup(uint16_t speed)
 {
-    // Calculate the OCR1A overflow count based on the required bit speed
-    // and CPU clock rate
-    uint16_t ocr1a = (F_CPU / 8UL) / speed;
+    uint16_t nticks; // number of prescaled ticks needed
+    uint8_t prescaler; // Bit values for CS0[2:0]
 
-#ifndef TEST
-    // Set up timer1 for a tick every 62.50 microseconds 
-    // for 2000 bits per sec
-    TCCR1A = 0;
-    TCCR1B = _BV(WGM12) | _BV(CS10);
+    // figure out prescaler value and counter match value
+    _timer_calc(&speed, false, &nticks, &prescaler)
+
+    // Stop counting time while configuring
+    GTCCR |= _BV(TSM); // don't automatically/immediatly clear PSR0
+    GTCCR |= _BV(PSR0); // hold prescaler reset signal
+    TCNT0 = 0; // Clear the clock's current value after timer stopped
+
+    TCCR0A = _BV(WGM01); // Turn on CTC mode / Output Compare pins disconnected
+
+    // convert prescaler index to TCCRnB prescaler bits CS00, CS01, CS02
+    prescaler += 1; // 0 means no-clock
+    TCCR0B = prescaler; // set CS00, CS01, CS02 (other bits not needed)
+
+    // Number of ticks to count before firing interrupt
+    OCR0A = uint8_t(nticks);
+
+    // Set mask to fire interrupt when OCF0A bit is set in TIFR0
+    TIMSK |= _BV(OCIE0A);
+
+    // Enable counting
+    GTCCR &= ~_BV(TSM);
+
+#else // ARDUINO
+
+void vw_setup(uint16_t speed)
+{
+    uint16_t nticks; // number of prescaled ticks needed
+    uint8_t prescaler; // Bit values for CS0[2:0]
+
+    // figure out prescaler value and counter match value
+    _timer_calc(&speed, true, &nticks, &prescaler)
+
+    TCCR1A = 0; // Output Compare pins disconnected
+    TCCR1B |= _BV(WGM12); // Turn on CTC mode
+
+    // convert prescaler index to TCCRnB prescaler bits CS10, CS11, CS12
+    prescaler += 1; // bit 0 means no-clock
+    TCCR1B |= prescaler;
+
     // Caution: special procedures for setting 16 bit regs
-    OCR1A = ocr1a;
+    // is handled by the compiler
+    OCR1A = nticks;
     // Enable interrupt
 #ifdef TIMSK1
     // atmega168
@@ -305,9 +364,7 @@ void vw_setup(uint16_t speed)
 #else
     // others
     TIMSK |= _BV(OCIE1A);
-#endif
-
-#endif
+#endif // TIMSK1
 
     // Set up digital IO pins
     pinMode(vw_tx_pin, OUTPUT);
@@ -315,9 +372,9 @@ void vw_setup(uint16_t speed)
     pinMode(vw_ptt_pin, OUTPUT);
     digitalWrite(vw_ptt_pin, vw_ptt_inverted);
 }
-	
-#endif
-	
+
+#endif // ARDUINO
+
 // Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
 // set to the total number of symbols to send
 void vw_tx_start()
@@ -482,7 +539,14 @@ uint8_t vw_get_message(uint8_t* buf, uint8_t* len)
 // and to call the PLL code if the receiver is enabled
 //ISR(SIG_OUTPUT_COMPARE1A)
 #if defined (ARDUINO) // Arduino specific
+
+#ifdef __AVR_ATtiny85__
+SIGNAL(TIM0_COMPA_vect)
+#else // Assume Arduino Uno (328p or similar)
+
 SIGNAL(TIMER1_COMPA_vect)
+#endif // __AVR_ATtiny85__
+
 {
     if (vw_rx_enabled && !vw_tx_enabled)
 	vw_rx_sample = digitalRead(vw_rx_pin);
