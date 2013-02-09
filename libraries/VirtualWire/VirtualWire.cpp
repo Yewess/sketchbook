@@ -263,26 +263,52 @@ void vw_pll()
     }
 }
 
-// Common function for calculating prescaler value and ticks needed @ speed
-static void _timer_calc(const uint16_t *speed, boolean sixteenbit,
-                        uint16_t *nticks, uint8_t *prescaler)
+// Common function for setting timer ticks @ prescaler values for speed
+// Returns prescaler index into {0, 1, 8, 64, 256, 1024} array
+// and sets nticks to compare-match value if lower than max_ticks
+// returns 0 & nticks = 0 on fault
+static uint8_t _timer_calc(uint16_t speed, uint16_t max_ticks, uint16_t *nticks)
 {
-    for (*prescaler=0; *prescaler < 5; *prescaler += 1)
-        // Clock divider values set in TCCRnB
-        uint16_t prescalers[] = {1, 8, 64, 256, 1024};
+    // Clock divider (prescaler) values - 0: error flag
+    uint16_t prescalers[] = {0, 1, 8, 64, 256, 1024};
+    uint8_t prescaler=0; // index into array & return bit value
+    unsigned long ulticks; // calculate by ntick overflow
+
+    // Div-by-zero protection
+    if (speed == 0)
+    {
+        // signal fault
+        *nticks = 0;
+        return 0;
+    }
+
+    // test increasing prescaler (divisor), decreasing ulticks until no overflow
+    for (prescaler=1; prescaler < 6; prescaler += 1)
+    {
         // Amount of time per CPU clock tick (in seconds)
-        float clock_time = (1.0 / (float(F_CPU) / float(prescalers[*prescaler])));
-        // fraction of second needed to xmit one bit
-        float bit_time = ((1.0 / float(*speed)) / 8.0);
+        float clock_time = (1.0 / (float(F_CPU) / float(prescalers[prescaler])));
+        // Fraction of second needed to xmit one bit
+        float bit_time = ((1.0 / float(speed)) / 8.0);
         // number of prescaled ticks needed to handle bit time @ speed
-        *nticks = uint16_t(bit_time / clock_time);
-        if ((!sixteenbit) && (*nticks < 255)) { // 8bit counter overflow
-            break; // found prescaler
-        } elif (sixteenbit) && (*nticks < 65535) { // 16bit counter overflow
+        ulticks = long(bit_time) / long(clock_time);
+        // Test if ulticks fits in nticks bitwidth (with 1-tick safety margin)
+        if ((ulticks > 1) && (ulticks < max_ticks))
+        {
             break; // found prescaler
         }
+        // Won't fit, check with next prescaler value
     }
-    // Don't need to test for more b/c prescaler=1024 can handle speed=1
+
+    // Check for error
+    if ((ulticks < 2) || (ulticks > max_ticks))
+    {
+        // signal fault
+        *nticks = 0;
+        return 0;
+    }
+
+    *nticks = ulticks;
+    return prescaler;
 }
 
 // Speed is in bits per sec RF rate
@@ -306,21 +332,18 @@ void vw_setup(uint16_t speed)
 }
 
 #elif defined (ARDUINO) // Arduino specific
-
-#ifdef __AVR_ATtiny85__
-
 void vw_setup(uint16_t speed)
 {
     uint16_t nticks; // number of prescaled ticks needed
     uint8_t prescaler; // Bit values for CS0[2:0]
 
+#ifdef __AVR_ATtiny85__
     // figure out prescaler value and counter match value
-    _timer_calc(&speed, false, &nticks, &prescaler)
-
-    // Stop counting time while configuring
-    GTCCR |= _BV(TSM); // don't automatically/immediatly clear PSR0
-    GTCCR |= _BV(PSR0); // hold prescaler reset signal
-    TCNT0 = 0; // Clear the clock's current value after timer stopped
+    prescaler = _timer_calc(speed, (uint8_t)-1, &nticks);
+    if (!prescaler)
+    {
+        return; // fault
+    }
 
     TCCR0A = _BV(WGM01); // Turn on CTC mode / Output Compare pins disconnected
 
@@ -334,18 +357,13 @@ void vw_setup(uint16_t speed)
     // Set mask to fire interrupt when OCF0A bit is set in TIFR0
     TIMSK |= _BV(OCIE0A);
 
-    // Enable counting
-    GTCCR &= ~_BV(TSM);
-
 #else // ARDUINO
-
-void vw_setup(uint16_t speed)
-{
-    uint16_t nticks; // number of prescaled ticks needed
-    uint8_t prescaler; // Bit values for CS0[2:0]
-
     // figure out prescaler value and counter match value
-    _timer_calc(&speed, true, &nticks, &prescaler)
+    prescaler = _timer_calc(speed, (uint16_t)-1, &nticks);
+    if (!prescaler)
+    {
+        return; // fault
+    }
 
     TCCR1A = 0; // Output Compare pins disconnected
     TCCR1B |= _BV(WGM12); // Turn on CTC mode
@@ -365,6 +383,8 @@ void vw_setup(uint16_t speed)
     // others
     TIMSK |= _BV(OCIE1A);
 #endif // TIMSK1
+
+#endif // __AVR_ATtiny85__
 
     // Set up digital IO pins
     pinMode(vw_tx_pin, OUTPUT);
