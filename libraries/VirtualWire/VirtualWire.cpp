@@ -14,7 +14,7 @@
 //
 // Author: Mike McCauley (mikem@open.com.au)
 // Copyright (C) 2008 Mike McCauley
-// $Id: VirtualWire.cpp,v 1.8 2013/01/14 06:49:29 mikem Exp mikem $
+// $Id: VirtualWire.cpp,v 1.9 2013/02/14 22:02:11 mikem Exp mikem $
 
 
 #if defined(ARDUINO)
@@ -32,7 +32,7 @@
 #include <util/crc16.h>
 
 
-static uint8_t vw_tx_buf[(VW_MAX_MESSAGE_LEN * 2) + VW_HEADER_LEN]
+static uint8_t vw_tx_buf[(VW_MAX_MESSAGE_LEN * 2) + VW_HEADER_LEN] 
      = {0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x38, 0x2c};
 
 // Number of symbols in vw_tx_buf to be sent;
@@ -69,10 +69,10 @@ static uint8_t vw_rx_sample = 0;
 // Last receiver sample
 static uint8_t vw_rx_last_sample = 0;
 
-// PLL ramp, varies between 0 and VW_RX_RAMP_LEN-1 (159) over
-// VW_RX_SAMPLES_PER_BIT (8) samples per nominal bit time.
+// PLL ramp, varies between 0 and VW_RX_RAMP_LEN-1 (159) over 
+// VW_RX_SAMPLES_PER_BIT (8) samples per nominal bit time. 
 // When the PLL is synchronised, bit transitions happen at about the
-// 0 mark.
+// 0 mark. 
 static uint8_t vw_rx_pll_ramp = 0;
 
 // This is the integrate and dump integral. If there are <5 0 samples in the PLL cycle
@@ -112,15 +112,15 @@ static uint8_t vw_rx_good = 0;
 
 // 4 bit to 6 bit symbol converter table
 // Used to convert the high and low nybbles of the transmitted data
-// into 6 bit symbols for transmission. Each 6-bit symbol has 3 1s and 3 0s
+// into 6 bit symbols for transmission. Each 6-bit symbol has 3 1s and 3 0s 
 // with at most 3 consecutive identical bits
 static uint8_t symbols[] =
 {
-    0xd,  0xe,  0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c,
+    0xd,  0xe,  0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c, 
     0x23, 0x25, 0x26, 0x29, 0x2a, 0x2c, 0x32, 0x34
 };
 
-// Cant really do this as a real C++ class, since we need to have
+// Cant really do this as a real C++ class, since we need to have 
 // an ISR
 extern "C"
 {
@@ -131,7 +131,7 @@ uint16_t vw_crc(uint8_t *ptr, uint8_t count)
 {
     uint16_t crc = 0xffff;
 
-    while (count-- > 0)
+    while (count-- > 0) 
 	crc = _crc_ccitt_update(crc, *ptr++);
     return crc;
 }
@@ -140,7 +140,7 @@ uint16_t vw_crc(uint8_t *ptr, uint8_t count)
 uint8_t vw_symbol_6to4(uint8_t symbol)
 {
     uint8_t i;
-
+    
     // Linear search :-( Could have a 64 byte reverse lookup table?
     for (i = 0; i < 16; i++)
 	if (symbol == symbols[i]) return i;
@@ -172,7 +172,7 @@ void vw_set_ptt_inverted(uint8_t inverted)
 }
 
 // Called 8 times per bit period
-// Phase locked loop tries to synchronise with the transmitter so that bit
+// Phase locked loop tries to synchronise with the transmitter so that bit 
 // transitions occur at about the time vw_rx_pll_ramp is 0;
 // Then the average is computed over each bit period to deduce the bit value
 void vw_pll()
@@ -184,8 +184,8 @@ void vw_pll()
     if (vw_rx_sample != vw_rx_last_sample)
     {
 	// Transition, advance if ramp > 80, retard if < 80
-	vw_rx_pll_ramp += ((vw_rx_pll_ramp < VW_RAMP_TRANSITION)
-			   ? VW_RAMP_INC_RETARD
+	vw_rx_pll_ramp += ((vw_rx_pll_ramp < VW_RAMP_TRANSITION) 
+			   ? VW_RAMP_INC_RETARD 
 			   : VW_RAMP_INC_ADVANCE);
 	vw_rx_last_sample = vw_rx_sample;
     }
@@ -218,8 +218,8 @@ void vw_pll()
 		// Have 12 bits of encoded message == 1 byte encoded
 		// Decode as 2 lots of 6 bits into 2 lots of 4 bits
 		// The 6 lsbits are the high nybble
-		uint8_t this_byte =
-		    (vw_symbol_6to4(vw_rx_bits & 0x3f)) << 4
+		uint8_t this_byte = 
+		    (vw_symbol_6to4(vw_rx_bits & 0x3f)) << 4 
 		    | vw_symbol_6to4(vw_rx_bits >> 6);
 
 		// The first decoded byte is the byte count of the following message
@@ -269,8 +269,8 @@ void vw_pll()
 // returns 0 & nticks = 0 on fault
 static uint8_t _timer_calc(uint16_t speed, uint16_t max_ticks, uint16_t *nticks)
 {
-    // Clock divider (prescaler) values - 0: error flag
-    uint16_t prescalers[] = {0, 1, 8, 64, 256, 1024};
+    // Clock divider (prescaler) values - 0/3333: error flag
+    uint16_t prescalers[] = {0, 1, 8, 64, 256, 1024, 3333};
     uint8_t prescaler=0; // index into array & return bit value
     unsigned long ulticks; // calculate by ntick overflow
 
@@ -283,14 +283,14 @@ static uint8_t _timer_calc(uint16_t speed, uint16_t max_ticks, uint16_t *nticks)
     }
 
     // test increasing prescaler (divisor), decreasing ulticks until no overflow
-    for (prescaler=1; prescaler < 6; prescaler += 1)
+    for (prescaler=1; prescaler < 7; prescaler += 1)
     {
         // Amount of time per CPU clock tick (in seconds)
         float clock_time = (1.0 / (float(F_CPU) / float(prescalers[prescaler])));
         // Fraction of second needed to xmit one bit
         float bit_time = ((1.0 / float(speed)) / 8.0);
         // number of prescaled ticks needed to handle bit time @ speed
-        ulticks = long(bit_time) / long(clock_time);
+        ulticks = long(bit_time / clock_time);
         // Test if ulticks fits in nticks bitwidth (with 1-tick safety margin)
         if ((ulticks > 1) && (ulticks < max_ticks))
         {
@@ -300,7 +300,7 @@ static uint8_t _timer_calc(uint16_t speed, uint16_t max_ticks, uint16_t *nticks)
     }
 
     // Check for error
-    if ((ulticks < 2) || (ulticks > max_ticks))
+    if ((prescaler == 6) || (ulticks < 2) || (ulticks > max_ticks))
     {
         // signal fault
         *nticks = 0;
@@ -318,18 +318,18 @@ void vw_setup(uint16_t speed)
 	// Calculate the counter overflow count based on the required bit speed
 	// and CPU clock rate
 	uint16_t ocr1a = (F_CPU / 8UL) / speed;
-
+		
 	// This code is for Energia/MSP430
 	TA0CCR0 = ocr1a;				// Ticks for 62,5 us
 	TA0CTL = TASSEL_2 + MC_1;       // SMCLK, up mode
 	TA0CCTL0 |= CCIE;               // CCR0 interrupt enabled
-
+		
 	// Set up digital IO pins
 	pinMode(vw_tx_pin, OUTPUT);
 	pinMode(vw_rx_pin, INPUT);
 	pinMode(vw_ptt_pin, OUTPUT);
 	digitalWrite(vw_ptt_pin, vw_ptt_inverted);
-}
+}	
 
 #elif defined (ARDUINO) // Arduino specific
 void vw_setup(uint16_t speed)
@@ -345,10 +345,11 @@ void vw_setup(uint16_t speed)
         return; // fault
     }
 
+    TCCR0A = 0;
     TCCR0A = _BV(WGM01); // Turn on CTC mode / Output Compare pins disconnected
 
     // convert prescaler index to TCCRnB prescaler bits CS00, CS01, CS02
-    prescaler += 1; // 0 means no-clock
+    TCCR0B = 0;
     TCCR0B = prescaler; // set CS00, CS01, CS02 (other bits not needed)
 
     // Number of ticks to count before firing interrupt
@@ -358,6 +359,7 @@ void vw_setup(uint16_t speed)
     TIMSK |= _BV(OCIE0A);
 
 #else // ARDUINO
+    // This is the path for most Arduinos
     // figure out prescaler value and counter match value
     prescaler = _timer_calc(speed, (uint16_t)-1, &nticks);
     if (!prescaler)
@@ -366,10 +368,9 @@ void vw_setup(uint16_t speed)
     }
 
     TCCR1A = 0; // Output Compare pins disconnected
-    TCCR1B |= _BV(WGM12); // Turn on CTC mode
+    TCCR1B = _BV(WGM12); // Turn on CTC mode
 
     // convert prescaler index to TCCRnB prescaler bits CS10, CS11, CS12
-    prescaler += 1; // bit 0 means no-clock
     TCCR1B |= prescaler;
 
     // Caution: special procedures for setting 16 bit regs
@@ -495,7 +496,7 @@ uint8_t vw_send(uint8_t* buf, uint8_t len)
     p[index++] = symbols[count >> 4];
     p[index++] = symbols[count & 0xf];
 
-    // Encode the message into 6 bit symbols. Each byte is converted into
+    // Encode the message into 6 bit symbols. Each byte is converted into 
     // 2 6-bit symbols, high nybble first, low nybble second
     for (i = 0; i < len; i++)
     {
@@ -534,22 +535,22 @@ uint8_t vw_have_message()
 uint8_t vw_get_message(uint8_t* buf, uint8_t* len)
 {
     uint8_t rxlen;
-
+    
     // Message available?
     if (!vw_rx_done)
 	return false;
-
+    
     // Wait until vw_rx_done is set before reading vw_rx_len
     // then remove bytecount and FCS
     rxlen = vw_rx_len - 3;
-
+    
     // Copy message (good or bad)
     if (*len > rxlen)
 	*len = rxlen;
     memcpy(buf, vw_rx_buf + 1, *len);
-
+    
     vw_rx_done = false; // OK, got that message thanks
-
+    
     // Check the FCS, return goodness
     return (vw_crc(vw_rx_buf, vw_rx_len) == 0xf0b8); // FCS OK?
 }
@@ -570,14 +571,14 @@ SIGNAL(TIMER1_COMPA_vect)
 {
     if (vw_rx_enabled && !vw_tx_enabled)
 	vw_rx_sample = digitalRead(vw_rx_pin);
-
-    // Do transmitter stuff first to reduce transmitter bit jitter due
+    
+    // Do transmitter stuff first to reduce transmitter bit jitter due 
     // to variable receiver processing
     if (vw_tx_enabled && vw_tx_sample++ == 0)
     {
 	// Send next bit
 	// Symbols are sent LSB first
-	// Finished sending the whole message? (after waiting one bit period
+	// Finished sending the whole message? (after waiting one bit period 
 	// since the last bit)
 	if (vw_tx_index >= vw_tx_len)
 	{
@@ -596,7 +597,7 @@ SIGNAL(TIMER1_COMPA_vect)
     }
     if (vw_tx_sample > 7)
 	vw_tx_sample = 0;
-
+    
     if (vw_rx_enabled && !vw_tx_enabled)
 	vw_pll();
 }
@@ -605,14 +606,14 @@ void vw_Int_Handler()
 {
     if (vw_rx_enabled && !vw_tx_enabled)
 	vw_rx_sample = digitalRead(vw_rx_pin);
-
-    // Do transmitter stuff first to reduce transmitter bit jitter due
+    
+    // Do transmitter stuff first to reduce transmitter bit jitter due 
     // to variable receiver processing
     if (vw_tx_enabled && vw_tx_sample++ == 0)
     {
 	// Send next bit
 	// Symbols are sent LSB first
-	// Finished sending the whole message? (after waiting one bit period
+	// Finished sending the whole message? (after waiting one bit period 
 	// since the last bit)
 	if (vw_tx_index >= vw_tx_len)
 	{
@@ -631,12 +632,12 @@ void vw_Int_Handler()
     }
     if (vw_tx_sample > 7)
 	vw_tx_sample = 0;
-
+    
     if (vw_rx_enabled && !vw_tx_enabled)
 	vw_pll();
 }
 
-interrupt(TIMER0_A0_VECTOR) Timer_A_int(void)
+interrupt(TIMER0_A0_VECTOR) Timer_A_int(void) 
 {
     vw_Int_Handler();
 };
