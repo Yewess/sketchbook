@@ -464,6 +464,7 @@ boolean powerTimersCallback(unsigned long *currentTime) {
                 writeNodeIDServoMap(); // only updates changed info when not in debug
 #endif
                 return true; // EXIT callback
+            }
         }
         if (lcdButtons & BUTTON_UP) {
             if (!changing) {

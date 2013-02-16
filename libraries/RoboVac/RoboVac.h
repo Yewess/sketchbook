@@ -28,7 +28,7 @@
 #define MESSAGEVERSION 0x01
 #define MESSAGESIZE sizeof(message_t)
 #define TXINTERVAL 1002 // Miliseconds between transmits
-#define RXTXBAUD 300 // Rf Baud
+#define RXTXBAUD 4000 // Rf Baud
 #define SERIALBAUD 115200
 #define NODENAMEMAX (lcdCols + 1) // name characters + 1 for NULL
 #define MAXPORTS 16 // Total number of motor ports
