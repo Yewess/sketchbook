@@ -24,16 +24,15 @@
     virtual wire: http://www.open.com.au/mikem/arduino/
 */
 
+#include <EEPROM.h>
 #include <VirtualWire.h>
 #include <RoboVac.h>
 
 /* Definitions */
-#define NODEID 0x01
 #undef DEBUG
 
 // Constants used once (to save space)
 #define SENSEINTERVAL 101
-#define STATUSINTERVAL 6003
 #define OVERRIDEAMOUNT (60000 * 3)
 
 // AC Frequency
@@ -52,8 +51,11 @@ const int txEnablePin = 1;
 const int txDataPin = 0;
 const int currentSensePin = 5;
 const int overridePin = 2;
+const int batteryPin = 3;// <--- MUST Disco. to program digispark!
+const int floatingPin = 4; // for random seed
 
 /* Global Variables */
+byte nodeID = 255;
 message_t message;
 unsigned long analogReadMicroseconds = 0; // measured in setup()
 int sampleLow = 0;
@@ -62,17 +64,28 @@ int sampleRange = 0;
 int threshold = 0;
 unsigned long txInterval = long(TXINTERVAL);
 unsigned long currentTime = 0; // current ms
-unsigned long overrideTime = 0; // current Interval of override mode
+unsigned long overrideEnter = 0; // Time when override mode first set
 unsigned long lastOvertide = 0; // first time override button pressed
+unsigned long overrideInterval = 0;
 unsigned long lastTXEvent = 0; // ms since last entered txEvent()
 unsigned long lastCurrentEvent = 0; // ms since last entered updateCurrentEvent()
+boolean randomSeeded = false;
+boolean overrideMode = false;
 
 /* Functions */
+
+byte getRandomByte(void) {
+    if (!randomSeeded) {
+        delay(1);
+        randomSeed(analogRead(floatingPin) + ((millis() * 1000) + micros()));
+    }
+    return random(256);
+}
 
 void txEvent(void) {
     if (thresholdBreached()) {
         digitalWrite(txEnablePin, HIGH);
-        makeMessage(&message, byte(NODEID));
+        makeMessage(&message, nodeID);
         vw_send((uint8_t *) &message, MESSAGESIZE);
         PRINTMESSAGE(millis(), message, 0);
     } else {
@@ -81,83 +94,155 @@ void txEvent(void) {
 
     // Check override button during slow event
     if (digitalRead(overridePin) == HIGH) {
-        incOverrideTime();
+        incOverrideTime(); // event timer does debounce
     }
 }
 
-void updateCurrentEvent(void) {
-    char index=0;
-    char sample=0;
-
-    // reset data
-    sampleHigh = 0;
-    sampleLow = 0;
-    sampleRange = 0;
+int updateCurrentEvent(void) {
+    int sample=0;
 
     // Fill data elements
-    for (index=0; index< SAMPLESPERWAVE; index++) {
-        sample= map( analogRead(currentSensePin),
-                     0, 1023,
-                     -512, 512);
-        if (sample > sampleHigh) {
+    for (byte index=0; index< SAMPLESPERWAVE; index++) {
+        sample = analogRead(currentSensePin); // 512 == 0 volts
+        if (sample >= sampleHigh) {
             sampleHigh = sample;
-        } else if (sample < sampleLow) {
+        } else if (sample <= sampleLow) {
             sampleLow = sample;
         }
         // wait difference between MICROSPERSAMPLE and analogReadMicroseconds
         delayMicroseconds(MICROSPERSAMPLE - analogReadMicroseconds);
     }
-    sampleRange = sampleHigh - sampleLow;
+    return sampleHigh - sampleLow;
+}
+
+void overrideCancel(void) {
+    overrideMode = false;
+    overrideEnter = 0;
+    overrideInterval = 0;
 }
 
 boolean thresholdBreached() {
     if (sampleRange >= threshold) {
-        overrideTime = 0; // Cancel override mode
-        lastOvertide = 0;
+        overrideCancel();
         return true;
     } else { // under threshold
-        if (overrideTime > 0) { // in override
-            // update override timer
-            if (timerExpired(&currentTime, &lastOvertide, overrideTime)) {
-                // override mode finished
-                overrideTime = 0;
-                lastOvertide = 0;
-                return false;
-            } else {
-                // in override mode
-                return true;
-            }
+        if (overrideMode) {
+            return true;
         } else { // not in override
-            overrideTime = 0;
-            lastOvertide = 0;
             return false;
         }
     }
 }
 
-void incOverrideTime(void) {
+void incOverrideTime() {
     // Check if already in override mode or not
-    if (overrideTime > 0) {
-        // In overrdie, add more.
-        overrideTime += OVERRIDEAMOUNT;
+    if  ((overrideMode == false) &&
+         (overrideEnter == 0) &&
+         (overrideInterval == 0)) {
+        // Entering override mode
+        overrideEnter = millis();
+        overrideInterval = OVERRIDEAMOUNT;
+        overrideMode = true;
     } else {
-        // not in override
-        overrideTime = OVERRIDEAMOUNT; // enter override
-        // Remember when this happened
-        lastOvertide = currentTime;
+        // already in overrde, add more time
+        overrideInterval += OVERRIDEAMOUNT;
     }
-    // Signal to user time incremented
+    // signal to user
+    oneBlink();
+}
+
+void calibrateThreshold(void) {
+    for(int count=0; count < 100; count++) {
+        threshold = updateCurrentEvent();
+    }
+    // 256 signals a calibration error
+    threshold = (int) constrain((unsigned long) threshold * 5,
+                                (unsigned long) 5, // force function
+                                (unsigned long) 256);
+    // reset reading for next time
+    sampleHigh = 0;
+    sampleLow = 0;
+}
+
+void calibrateAnalogRead(void) {
+    unsigned long startTime = 0;
+    unsigned long stopTime = 0;
+
+    // Calibrate read speed
+    // Capture the start time in microseconds
+    startTime = (millis() * 1000) + micros();
+    // 10,000 analog reads for average (below)
+    for (int counter = 0; counter < 10000; counter++) {
+        threshold = analogRead(currentSensePin);
+    }
+    stopTime = (millis() * 1000) + micros();
+    // Calculate duration in microseconds
+    // divide the duration by number of reads
+    analogReadMicroseconds = (stopTime - startTime) / 10000;
+}
+
+void fourBlinks(void) { // 4 blinks & 1 second delay
+    for (byte count=0; count < 4; count++) {
+        digitalWrite(txEnablePin, HIGH);
+        delay(150);
+        digitalWrite(txEnablePin, LOW);
+        delay(100);
+    }
+}
+
+void oneBlink(void) { // 1 blink & 1 second delay
     digitalWrite(txEnablePin, HIGH);
-    delay(txInterval / 2);
+    delay(500);
     digitalWrite(txEnablePin, LOW);
+    delay(500);
+}
+
+void checkReset(void) {
+    boolean doReset=false;
+
+    // must hold button for ~4 seconds, remaining is entropy
+    for(int count=0; count < 40; count++) {
+        doReset = (digitalRead(overridePin) == HIGH);
+        if (!doReset) {
+            break;
+        } else {
+            // blink light
+            digitalWrite(txEnablePin, !digitalRead(txEnablePin));
+        }
+        delay(100);
+    }
+    // signal reset mode entered & add entropy
+    while (digitalRead(overridePin) == HIGH) {
+        nodeID = 0; // reset signal
+        digitalWrite(txEnablePin, HIGH);
+        delay(50);
+    }
+    digitalWrite(txEnablePin, LOW);
+}
+
+void setNodeID(void) {
+    // get currently set value (255 is default)
+    nodeID = EEPROM.read(0);
+
+    checkReset(); // sets nodeID == 0 on reset
+
+    while ((nodeID == 255) || (nodeID == 0)) {
+        nodeID = getRandomByte();
+    }
+    // only write if changed
+    if (nodeID != EEPROM.read(0)) {
+        fourBlinks();
+        EEPROM.write(0, nodeID);
+    }
 }
 
 /* Main Program */
 
 void setup() {
-    double startTime = 0;
-    double stopTime = 0;
-    double duration = 0;
+
+    pinMode(floatingPin, INPUT);
+    pinMode(overridePin, INPUT);
+    pinMode(currentSensePin, INPUT);
 
     pinMode(txDataPin, OUTPUT);
     digitalWrite(txDataPin, LOW);
@@ -167,58 +252,45 @@ void setup() {
     digitalWrite(txEnablePin, LOW);
     vw_set_ptt_pin(txEnablePin);
 
-    pinMode(overridePin, INPUT);
+    setNodeID();
 
-    pinMode(currentSensePin, INPUT);
-
-    vw_setup(RXTXBAUD);
-
-    // Calibrate read speed
-    // Capture the start time in microseconds
-    startTime = (millis() * 1000) + micros();
-    for (int counter = 0; counter < 10000; counter++) { // 10,000 analog reads for average (below)
-        threshold = analogRead(currentSensePin);
-        if (threshold > sampleHigh) {
-            sampleHigh = constrain(threshold, 0, 127);
-        }
-    }
-    stopTime = (millis() * 1000) + micros();
-    // Calculate duration in microseconds
-    duration = stopTime - startTime;
-    // divide the duration by number of reads
-    analogReadMicroseconds = duration / 10000.0;
-
-    // set threshold to 10x highest value read (min of 10)
-    threshold = constrain(sampleHigh * 10, 10, 256);
+    calibrateAnalogRead();
 
     // Check Assumptions
-    if (analogReadMicroseconds > MICROSPERSAMPLE) {
+    if ((threshold == 256) || (analogReadMicroseconds > MICROSPERSAMPLE)) {
         while (1) {
             // signal error, MICROSPERSAMPLE is too small!
-            digitalWrite(txEnablePin, HIGH);
-            delay(250);
-            digitalWrite(txEnablePin, LOW);
-            delay(250);
-            digitalWrite(txEnablePin, HIGH);
-            delay(250);
-            digitalWrite(txEnablePin, LOW);
-            delay(1000);
+            fourBlinks();
         }
     }
+
+    calibrateThreshold();
+
+    // installs ISR
+    vw_setup(RXTXBAUD);
 }
 
 void loop() {
     currentTime = millis();
-    // Jiggle txInterval slightly to help avoid collisions
-    if (currentTime % 2) {
-        txInterval += TXINTERVAL / 2; // half as long more
-    } else {
-        txInterval = TXINTERVAL;
-    }
     if (timerExpired(&currentTime, &lastCurrentEvent, SENSEINTERVAL)) {
-        updateCurrentEvent();
+        // clear previous data
+        sampleRange = updateCurrentEvent();
+        lastCurrentEvent = currentTime;
     }
     if (timerExpired(&currentTime, &lastTXEvent, txInterval)) {
-        txEvent();
+        txEvent(); // Also check override button press
+        // jiggle lastTXEvent +/- 255ms to help with collisions
+        lastTXEvent = getRandomByte(); // borrow this for a random even/odd
+        if ((lastTXEvent % 2) == 0) { // add time
+            lastTXEvent = currentTime - lastTXEvent;
+        } else {
+            lastTXEvent = currentTime + lastTXEvent;
+        }
+        // reset reading for next time
+        sampleHigh = 0;
+        sampleLow = 0;
+    }
+    if (timerExpired(&currentTime, &overrideEnter, overrideInterval)) {
+        overrideCancel();
     }
 }
