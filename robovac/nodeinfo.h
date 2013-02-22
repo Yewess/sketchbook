@@ -189,6 +189,14 @@ void readNodeIDServoMap(void) {
         address++;
         D(".");
     }
+    // constrain minmax to range
+    if (vacpower.VacPowerTime > 3600) {
+        vacpower.VacPowerTime = 0;
+    }
+    if (vacpower.VacOffTime > 14400) {
+        vacpower.VacOffTime = 0;
+    }
+
     D("\n");
 }
 
@@ -250,6 +258,13 @@ void writeNodeIDServoMap(void) {
     D("\n");
 
     D("Write intvl info.");
+    // constrain minmax to range
+    if (vacpower.VacPowerTime > 3600) {
+        vacpower.VacPowerTime = 0;
+    }
+    if (vacpower.VacOffTime > 14400) {
+        vacpower.VacOffTime = 0;
+    }
     for (int byteCount=0; byteCount < sizeof(vacPower_t); byteCount++) {
         byte *powerByte = ((byte *) &vacpower) + byteCount;
 

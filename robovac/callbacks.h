@@ -455,6 +455,23 @@ boolean powerTimersCallback(unsigned long *currentTime) {
     if (lcdButtons) {
         // Right button does nothing
 
+        if (lcdButtons & BUTTON_RIGHT) {
+            if (!changing) { // exit
+                changing=false;
+                lastPaint=0;
+                change_VacPowerTime = true;
+#ifndef DEBUG
+                writeNodeIDServoMap(); // only updates changed info when not in debug
+#endif
+                return true; // EXIT callback
+            } else {
+                if (change_VacPowerTime) {
+                    vacpower.VacPowerTime -= 100;
+                } else {
+                    vacpower.VacOffTime -= 100;
+                }
+            }
+        }
         if (lcdButtons & BUTTON_LEFT) {
             if (!changing) { // exit
                 changing=false;
@@ -464,6 +481,12 @@ boolean powerTimersCallback(unsigned long *currentTime) {
                 writeNodeIDServoMap(); // only updates changed info when not in debug
 #endif
                 return true; // EXIT callback
+            } else {
+                if (change_VacPowerTime) {
+                    vacpower.VacPowerTime += 100;
+                } else {
+                    vacpower.VacOffTime += 100;
+                }
             }
         }
         if (lcdButtons & BUTTON_UP) {
@@ -495,14 +518,10 @@ boolean powerTimersCallback(unsigned long *currentTime) {
 
     // constrain minmax to range
     if (vacpower.VacPowerTime > 3600) {
-        vacpower.VacPowerTime = 3600;
-    } else if (vacpower.VacPowerTime < 20) {
-        vacpower.VacPowerTime = 20;
+        vacpower.VacPowerTime = 0;
     }
     if (vacpower.VacOffTime > 14400) {
-        vacpower.VacOffTime = 14400;
-    } else if (vacpower.VacOffTime < 20) {
-        vacpower.VacOffTime = 20;
+        vacpower.VacOffTime = 0;
     }
 
     // Write screen template
@@ -517,8 +536,8 @@ boolean powerTimersCallback(unsigned long *currentTime) {
             lcdBuf[0][7] = lcdLArrow;
             lcdBuf[0][15] = lcdRArrow;
         } else {
-            lcdBuf[1][7] = lcdUArrow;
-            lcdBuf[1][15] = lcdDArrow;
+            lcdBuf[1][7] = lcdLArrow;
+            lcdBuf[1][15] = lcdRArrow;
         }
     }
 
@@ -526,7 +545,7 @@ boolean powerTimersCallback(unsigned long *currentTime) {
     timeMSB = highByte(vacpower.VacPowerTime);
     timeLSB = lowByte(vacpower.VacPowerTime);
     memcpy(&(lcdBuf[0][8]), byteHexString(timeMSB), 2);
-    memcpy(&(lcdBuf[0][10]), byteHexString(timeMSB), 2);
+    memcpy(&(lcdBuf[0][10]), byteHexString(timeLSB), 2);
     timeMSB = highByte(vacpower.VacOffTime);
     timeLSB = lowByte(vacpower.VacOffTime);
     memcpy(&(lcdBuf[1][8]), byteHexString(timeMSB), 2);
