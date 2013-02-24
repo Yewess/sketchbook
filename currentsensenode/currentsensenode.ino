@@ -50,8 +50,8 @@
 const int txEnablePin = 1;
 const int txDataPin = 0;
 const int currentSensePin = 5;
-const int overridePin = 2;
-const int batteryPin = 3;// <--- MUST Disco. to program digispark!
+const int overridePin = 3; // has 1.5k pull up allready
+const int batteryPin = 2;
 const int floatingPin = 4; // for random seed
 
 /* Global Variables */
@@ -74,6 +74,15 @@ boolean overrideMode = false;
 
 /* Functions */
 
+// logic is inverted b/c internal pull-up is used
+boolean overridePressed(void) {
+    if (digitalRead(overridePin) == HIGH) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 byte getRandomByte(void) {
     if (!randomSeeded) {
         delay(1);
@@ -93,7 +102,7 @@ void txEvent(void) {
     }
 
     // Check override button during slow event
-    if (digitalRead(overridePin) == HIGH) {
+    if (overridePressed) {
         incOverrideTime(); // event timer does debounce
     }
 }
@@ -198,12 +207,9 @@ void oneBlink(void) { // 1 blink & 1 second delay
 }
 
 void checkReset(void) {
-    boolean doReset=false;
-
     // must hold button for ~4 seconds, remaining is entropy
     for(int count=0; count < 40; count++) {
-        doReset = (digitalRead(overridePin) == HIGH);
-        if (!doReset) {
+        if (!overridePressed()) {
             break;
         } else {
             // blink light
@@ -212,7 +218,7 @@ void checkReset(void) {
         delay(100);
     }
     // signal reset mode entered & add entropy
-    while (digitalRead(overridePin) == HIGH) {
+    while (overridePressed()) {
         nodeID = 0; // reset signal
         digitalWrite(txEnablePin, HIGH);
         delay(50);
@@ -239,9 +245,11 @@ void setNodeID(void) {
 /* Main Program */
 
 void setup() {
+    // override button to ground (needs internal pull-up)
+    pinMode(overridePin, OUTPUT);
+    digitalWrite(overridePin,, HIGH);
 
     pinMode(floatingPin, INPUT);
-    pinMode(overridePin, INPUT);
     pinMode(currentSensePin, INPUT);
 
     pinMode(txDataPin, OUTPUT);
