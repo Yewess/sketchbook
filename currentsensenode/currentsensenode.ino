@@ -247,7 +247,7 @@ void setNodeID(void) {
 void setup() {
     // override button to ground (needs internal pull-up)
     pinMode(overridePin, OUTPUT);
-    digitalWrite(overridePin,, HIGH);
+    digitalWrite(overridePin, HIGH);
 
     pinMode(floatingPin, INPUT);
     pinMode(currentSensePin, INPUT);
