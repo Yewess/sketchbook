@@ -25,20 +25,18 @@
 
 // Definitions
 #define MESSAGEMAGIC 0x9876
-#define MESSAGEVERSION 0x01
+#define MESSAGEVERSION 0x02
 #define MESSAGESIZE sizeof(message_t)
 #define TXINTERVAL 1002 // Miliseconds between transmits
-#define RXTXBAUD 4000 // Rf Baud
+#define STATUSINTERVAL (300000) // 5 minutes
+#define RXTXBAUD 2000 // Rf Baud
 #define SERIALBAUD 115200
-#define NODENAMEMAX (lcdCols + 1) // name characters + 1 for NULL
+#define NODENAMEMAX (16 + 1) // name characters + 1 for NULL
 #define MAXPORTS 16 // Total number of motor ports
 #define MAXNODES 6 // number of nodes to keep track of
-#define OPENALLPORT 253 // id that opens all ports
-#define CLOSEALLPORT 254 // id that closes all ports
-#define NODENAMEMAX (lcdCols + 1) // name characters + 1
-#define SERVOPOWERTIME ((unsigned long) 100) // ms to wait for servo's to power up/down
+#define SERVOPOWERTIME ((unsigned long) 1000) // ms to wait for servo's to power up/down
 #define SERVOMOVETIME ((unsigned long) 500) // ms to wait for servo's to move
-#define VACPOWERTIME ((unsigned long) 5000) // Time for vac to spin up
+#define VACPOWERTIME ((unsigned long) 2000) // Time for vac to spin up
 #define VACDOWNTIME ((unsigned long) 10000) // Time for vac to spin down
 #define LCDSLEEPTIME ((unsigned long) 120000) // ms to sleep if no activity
 #define LCDMENUTIME ((unsigned long) 30000) // ms before menu activity times out
@@ -48,18 +46,14 @@
 #define LCDBLOCK 255 // Block Character
 #define SERVOINCDEC 1 // amount to move hi/lo range
 
-// constants
-const int lcdRows = 2;
-const int lcdCols = 16;
-
 // Macros
 #define STATE2CASE(VAR, STATE) case STATE: VAR = #STATE; break;
 
 #define STATE2STRING(VAR, STATE) {\
     switch (STATE) {\
         STATE2CASE(VAR, VAC_LISTENING)\
-        STATE2CASE(VAR, VAC_VACPOWERUP)\
         STATE2CASE(VAR, VAC_SERVOPOWERUP)\
+        STATE2CASE(VAR, VAC_VACPOWERUP)\
         STATE2CASE(VAR, VAC_SERVOACTION)\
         STATE2CASE(VAR, VAC_SERVOPOWERDN)\
         STATE2CASE(VAR, VAC_VACUUMING)\
@@ -133,15 +127,18 @@ typedef struct nodeInfo_s {
     byte port_id; // servo node_id is mapped to
     word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
     word servo_max; // maximum limit of travel
-    unsigned int receive_count; // number of messages received in THRESHOLD
-    unsigned long last_heard; // timestamp last message was received
+    unsigned int receive_count; // number of messages received over THRESHOLD
+    unsigned long first_heard; // timestamp HELLO was received
+    unsigned long last_heard; // timestamp last message was received while in breach
+    byte batteryPercent; // percent battery remaining
     char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
 
+
 typedef enum vacstate_e {
     VAC_LISTENING, // Waiting for Signal
-    VAC_VACPOWERUP, // Powering up vacuum
     VAC_SERVOPOWERUP, // Powering up servos
+    VAC_VACPOWERUP, // Powering up vacuum
     VAC_SERVOACTION, // Moving Servos
     VAC_SERVOPOWERDN, // Powering down servos
     VAC_VACUUMING, // Waiting for down threshold
@@ -161,11 +158,20 @@ typedef enum lcdState_e {
     LCD_ENDSTATE, // Go back to LCD_ACTIVEWAIT
 } lcdState_t;
 
+typedef enum msgType_e {
+    MSG_HELLO, // switched on
+    MSG_STATUS, // Status message
+    MSG_BREACH, // Measurement threshold exceeded
+    MSG_MAXTYPE, // Do not use
+} msgType_t;
+
 typedef struct message_s {
-    word magic; // constant 0x42
-    byte version; // protocol version
-    byte node_id; // node ID
-    unsigned long up_time; // number of miliseconds running
+    word magic; // constant 0x42                              (2 bytes)
+    byte version; // protocol version                         (1 byte)
+    byte node_id; // node ID                                  (1 byte)
+    byte msgType; // msgType_t                                (1 byte)
+    unsigned long up_time; // number of miliseconds running   (4 bytes)
+    int batteryMiliVolts; // Battery voltage                  (2 bytes)
 } message_t;
 
 typedef struct vacPower_s {
@@ -177,7 +183,7 @@ typedef struct vacPower_s {
 typedef boolean (*menuEntryCallback_t)(unsigned long *currentTime);
 
 struct menuEntry_s {
-    const char name[lcdCols+1]; // Extra space for NULL
+    const char name[NODENAMEMAX]; // Extra space for NULL
     struct menuEntry_s *child;
     struct menuEntry_s *prev_sibling;
     struct menuEntry_s *next_sibling;
@@ -186,7 +192,8 @@ struct menuEntry_s {
 
 typedef struct menuEntry_s menuEntry_t;
 
-void makeMessage(message_t *message, byte nodeID);
+void makeMessage(message_t *message, byte nodeID,
+                 msgType_t msgType, int batteryMiliVolts);
 
 void copyMessage(message_t *destination, const message_t *source);
 
@@ -198,7 +205,5 @@ const unsigned long *timerExpired(const unsigned long *currentTime,
 
 char nibbleToHexChar(byte nibble);
 const char *byteHexString(byte thebyte);
-
-
 
 #endif // ROBOVAC_H

@@ -21,25 +21,33 @@
 #include <Arduino.h>
 #include <RoboVac.h>
 
-void makeMessage(message_t *message, byte nodeID) {
+void makeMessage(message_t *message, byte nodeID,
+                 msgType_t msgType, int batteryMiliVolts) {
     message->magic = MESSAGEMAGIC;
     message->version = MESSAGEVERSION;
     message->node_id = nodeID;
+    message->msgType = (byte)msgType;
     message->up_time = millis();
+    message->batteryMiliVolts = batteryMiliVolts;
 }
 
 void copyMessage(message_t *destination, const message_t *source) {
     destination->magic = source->magic;
     destination->version = source->version;
     destination->node_id = source->node_id;
+    destination->msgType = source->msgType;
     destination->up_time = source->up_time;
+    destination->batteryMiliVolts = source->batteryMiliVolts;
 }
 
 boolean validMessage(const message_t *message) {
     if (     (message->magic == MESSAGEMAGIC) &&
              (message->version == MESSAGEVERSION) &&
+             (message->msgType >= (byte)MSG_HELLO) &&
+             (message->msgType < (byte)MSG_MAXTYPE) &&
              (message->node_id > 0) &&
-             (message->node_id < 255) ) {
+             (message->node_id < 255) &&
+             (message->batteryMiliVolts <= 5000) ) {
         return true;
     } else {
         return false;
