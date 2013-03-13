@@ -37,8 +37,8 @@ void handleActionState(unsigned long *currentTime) {
 
 /*
     VAC_LISTENING, // Waiting for Signal
-    VAC_VACPOWERUP, // Powering up vacuum
     VAC_SERVOPOWERUP, // Powering up servos
+    VAC_VACPOWERUP, // Powering up vacuum
     VAC_SERVOACTION, // Moving Servos
     VAC_SERVOPOWERDN, // Powering down servos
     VAC_VACUUMING, // Waiting for down threshold
@@ -54,89 +54,73 @@ void handleActionState(unsigned long *currentTime) {
     switch (actionState) {
 
         case VAC_LISTENING:
-            lastActive = currentActive = activeNode(currentTime, false);;
-            if (currentActive != NULL) {
-                updateState(VAC_VACPOWERUP, currentTime);
-            }
-            break;
-
-        case VAC_VACPOWERUP:
-            vacControl(true, false); // Power ON
-            lastOnTime = *currentTime;
-            if (timerExpired(currentTime, &lastStateChange, VACPOWERTIME)) {
-                // Vac powerup finished
-                updateState(VAC_SERVOPOWERUP, currentTime);
+            if (timerExpired(currentTime, &lastOffTime, vacpower.VacOffTime)) {
+                if (activeNode(currentTime, false)) {
+                    updateState(VAC_VACPOWERUP, currentTime);
+                }
             } // else wait more
+            // TODO: Print cooldown timer
             break;
 
         case VAC_SERVOPOWERUP:
-            servoControl(true); // Power on
+            servoControl(true); // Also opens all ports
             if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                 // Servo powerup finished
+                updateState(VAC_VACPOWERUP, currentTime);
+            } // else wait some more
+            break;
+
+        case VAC_VACPOWERUP:
+            vacControl(true, false); // Power ON, don't ignore monitorMode
+            lastOnTime = *currentTime;
+            if (timerExpired(currentTime, &lastStateChange, VACPOWERTIME)) {
+                // Vac powerup finished
                 updateState(VAC_SERVOACTION, currentTime);
-            } // else wait some more
-            break;
-
-        case VAC_SERVOACTION:
-            currentActive = activeNode(currentTime, false);
-            if (currentActive != NULL) { // node remained active
-                moveServos(currentActive->port_id); // work on currentActive
-                if (lastActive != currentActive) { // Node changed
-                    lastActive = currentActive; // Wait another cycle
-                    lastStateChange = *currentTime;
-                } else { // no node change
-                    if (timerExpired(currentTime, &lastStateChange, SERVOMOVETIME)) {
-                        updateState(VAC_SERVOPOWERDN, currentTime);
-                    } // else wait more
-                }
-            } else { // node shutdown during servo move, go to standby
-                updateState(VAC_SERVOSTANDBY, currentTime);
-            }
-            break;
-
-        case VAC_SERVOPOWERDN:
-            servoControl(false); // Power off servos
-            if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
-                // Servo powerdown finished
-                updateState(VAC_VACUUMING, currentTime);
-            } // else wait some more
+            } // else wait more
             break;
 
         case VAC_VACUUMING:
-            currentActive = activeNode(currentTime, false);
-            if (currentActive != NULL) {
-                if (lastActive != currentActive) { // node changed!
-                    lastActive = currentActive;
-                    updateState(VAC_SERVOPOWERUP, currentTime); // move servos
-                } // else keep vaccuuming
-            } else { // All nodes shutdown, open all ports
-                updateState(VAC_SERVOPOSTPOWERUP, currentTime);
+            if (!activeNode(currentTime, false)) { // nothing active
+                updateState(VAC_SERVOSTANDBY, currentTime);
+            } else {
+                // open ports for all active nodes
+                for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
+                    nodeInfo_t *node = &nodeInfo[nodeCount];
+                    if (isActive(nodeCount)) {
+                        openPort(node->port_id, node->servo_max);
+                        updateState(VAC_VACUUMING, currentTime);
+                    } else {
+                        closePort(node->port_id, node->servo_min);
+                        updateState(VAC_VACUUMING, currentTime);
+                    }
+                }
             }
             break;
 
-        case VAC_SERVOPOSTPOWERUP:
-            servoControl(true); // Power on
-            if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
-                // Servo powerup finished
-                updateState(VAC_SERVOSTANDBY, currentTime);
-            } // else wait some more
-            break;
-
         case VAC_SERVOSTANDBY:
-            moveServos(OPENALLPORT); // open all ports
             if (timerExpired(currentTime, &lastStateChange, SERVOMOVETIME)) {
+                servoControl(false); // idle all servos
+            }
+            if (activeNode(currentTime, false)) { // node came online
+                updateState(VAC_VACUUMING, currentTime); // go back to move servos
+            } else if (timerExpired(currentTime, &lastOnTime, vacpower.VacPowerTime)) {
                 updateState(VAC_SERVOPOSTPOWERDN, currentTime);
-            } // else wait longer
+            } // wait more
             break;
 
         case VAC_SERVOPOSTPOWERDN:
-            servoControl(false); // Power off
+            if (activeNode(currentTime, false)) { // node came online
+                updateState(VAC_VACUUMING, currentTime); // go back to move servos
+            } else {
+                servoControl(true); // open all ports
+            }
             if (timerExpired(currentTime, &lastStateChange, SERVOPOWERTIME)) {
                 updateState(VAC_VACPOWERDN, currentTime);
-            } // not enough time
+            } // wait longer
             break;
 
         case VAC_VACPOWERDN:
+            currentActive = NULL;
             vacControl(false, true); // Power OFF
             // don't allow restart until VACPOWERTIME of spin-down happens
             if (timerExpired(currentTime, &lastStateChange, VACDOWNTIME)) {
@@ -146,19 +130,10 @@ void handleActionState(unsigned long *currentTime) {
             } // else wait more
             break;
 
-
-        case VAC_COOLDOWN:
-            // Must allow cooldown, ignore nodes
-            if (timerExpired(currentTime, &lastOffTime, vacpower.VacOffTime)) {
-                lastOffTime = 0;
-                updateState(VAC_ENDSTATE, currentTime);
-            } // else wait more
-            break;
-
         case VAC_ENDSTATE:
         default:
             // ignore any nodes comming online
-            lastActive = currentActive = NULL;
+            currentActive = NULL;
             // Make sure everything powered off
             servoControl(false); // Power off
             vacControl(false, true); // Power OFF

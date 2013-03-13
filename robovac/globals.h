@@ -9,7 +9,6 @@
 #define POLLINTERVAL (25) // @ 300 baud, takes 100ms to receive 30 bytes
 #define STATEINTERVAL (POLLINTERVAL+3) // update state almost as quickly
 #define LCDINTERVAL (9) // Must poll LCD buttons fast
-#define STATUSINTERVAL (3015) // DEBUGGING and LCD updates
 #define BUTTONCHANGE (300) // minimum time between button changes
 #define GOODMSGMIN (2) // Minimum number of good messages in...
 #define THRESHOLD (6000) // ..6 second reception threshold, to signal start
@@ -29,6 +28,8 @@ const int vacPowerControlPin = 2;
 const int servoCenterPW = int(PWMCENTER);
 const int servoMinPW = int(PWMMIN);
 const int servoMaxPW = int(PWMMAX);
+const int lcdRows = 2;
+const int lcdCols = 16;
 const int lcdDArrow = 4; // Down arrow character ID
 const int lcdUArrow = 5; // Up arrow character ID
 const int lcdRArrow = 126; //  right arrow character ID
@@ -38,9 +39,8 @@ const int lcdLArrow = 127; // left arrow character ID
 /* globals */
 
 // node state
+int activeNodeCount=0;
 nodeInfo_t nodeInfo[MAXNODES];
-nodeInfo_t *currentActive = NULL;
-nodeInfo_t *lastActive = NULL;
 
 // message state
 message_t message;

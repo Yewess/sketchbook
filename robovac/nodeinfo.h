@@ -16,11 +16,8 @@ void updateNodes(unsigned long *currentTime) {
         node = &(nodeInfo[nodeCount]);
 
         // don't bother with nodes having no messages or last_heard
-        if ( (node->receive_count == 0) ||
-             (currentTime == NULL) ||
-             (node->last_heard == 0 )) {
+        if ( (node->receive_count == 0) || (node->last_heard == 0 )) {
             node->receive_count = 0;
-            node->last_heard = 0;
             continue;
         }
 
@@ -47,35 +44,41 @@ void updateNodes(unsigned long *currentTime) {
                         0,
                         int(THRESHOLD)/int(TXINTERVAL));
 
-        // Nodes not heard from in 10x threshold get zerod last_heard
-        // Any nodes w/o a receive_count lose last_heard
-        if ((elapsedTime) && (*elapsedTime > (THRESHOLD * 10))) {
+        // Nodes not heard from in STATUSINTERVAL get zerod
+        if ((elapsedTime) && (*elapsedTime > (STATUSINTERVAL))) {
             node->last_heard = 0;
             node->receive_count = 0;
         }
     }
 }
 
+// return true if a node is active, otherwise false
+boolean isActive(int nodeCount, boolean ignore_receive_count=false) {
+    if (nodeInfo[nodeCount].last_heard == 0) {
+        return false;
+    } else if (ignore_receive_count ||
+               (nodeInfo[nodeCount].receive_count >= GOODMSGMIN)) {
+        return true;
+    } else { // just in case
+        return false;
+    }
+}
+
+// return next active node or NULL if none meet the criteria
 nodeInfo_t *activeNode(unsigned long *currentTime, boolean ignore_receive_count) {
     nodeInfo_t *result = NULL;
-    // return most recent active node
-    // or NULL if none meet the criteria
 
     for (int nodeCount=0; nodeCount < MAXNODES; nodeCount++) {
-        if (nodeInfo[nodeCount].last_heard == 0) {
-            continue;
+        // don't count over the same nodes each time
+        activeNodeCount++; // start looking at the node after we looked before
+        if (activeNodeCount >= MAXNODES) {
+            activeNodeCount = 0;
         }
-        if (ignore_receive_count || (nodeInfo[nodeCount].receive_count >= GOODMSGMIN)) {
-            if (result) { // most recent wins
-                if (nodeInfo[nodeCount].last_heard < result->last_heard) {
-                    result = &nodeInfo[nodeCount];
-                }
-            } else { // first match
-                result = &nodeInfo[nodeCount];
-            }
+        if (isActive(activeNodeCount, ignore_receive_count)) {
+            return &nodeInfo[activeNodeCount];
         }
     }
-    return result;
+    return NULL; // no nodes are active
 }
 
 nodeInfo_t *findNode(byte node_id) {
@@ -97,7 +100,9 @@ void setupNodeInfo(void) {
         nodeInfo[nodeCount].servo_min = servoCenterPW;
         nodeInfo[nodeCount].servo_max = servoCenterPW;
         nodeInfo[nodeCount].receive_count = 0;
+        nodeInfo[nodeCount].first_heard = 0;
         nodeInfo[nodeCount].last_heard = 0;
+        nodeInfo[nodeCount].batteryPercent = 100;
         strcpy(nodeInfo[nodeCount].node_name, "                \0");
     }
     vacpower.VacPowerTime = 0;
@@ -112,7 +117,9 @@ void printNodeInfo(nodeInfo_t *node) {
         SP(" Min: "); SP(node->servo_min);
         SP(" Max: "); SP(node->servo_max);
         SP(" Msgs: "); SP(node->receive_count);
+        SP(" frst ms: "); SP(node->first_heard);
         SP(" last ms: "); SP(node->last_heard);
+        SP(" batt %: "); SP(node->batteryPercent);
         SP("\n");
 }
 

@@ -31,8 +31,28 @@ void pollRxEvent(TimerInformation *Sender) {
         CRCGood = vw_get_message(messageBuff, &buffLen);
         node = findNode(message.node_id);
         if ( CRCGood && validMessage(&message) && node ) {
-            node->last_heard = currentTime;
-            node->receive_count = node->receive_count + 1;
+            switch (message.msgType) {
+                case MSG_HELLO:
+                    node->first_heard = message.up_time;
+                    node->last_heard = currentTime;
+                    node->batteryPercent = message.batteryPercent;
+                    node->receive_count = 0; // node rebooted
+                    break;
+                case MSG_STATUS:
+                    // Validate up_time always > first_heard
+                    if (message.up_time >= node->first_heard) {
+                        node->batteryPercent = message.batteryPercent;
+                        node->last_heard = currentTime;
+                    }
+                    break;
+                case MSG_BREACH:
+                    // Validate up_time always > first_heard
+                    if (message.up_time >= node->first_heard) {
+                        node->batteryPercent = message.batteryPercent;
+                        node->receive_count = node->receive_count + 1;
+                        node->last_heard = currentTime;
+                    }
+            }
         }
     }
 }
