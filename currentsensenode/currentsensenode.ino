@@ -24,6 +24,8 @@
     virtual wire: http://www.open.com.au/mikem/arduino/
 */
 
+#include <avr/sleep.h>
+#include <PinChangeInterruptSimple.h>
 #include <EEPROM.h>
 #include <RoboVac.h>
 #include <util/crc16.h>
@@ -192,6 +194,7 @@ byte getRandomByte(void) {
 
 void txEvent(void) {
     if (thresholdBreached()) {
+        lastActivity = currentTime;
         digitalWrite(txEnablePin, HIGH);
         makeMessage(&message, nodeID, MSG_BREACH, getBatteryMiliVolts());
         vw_send((uint8_t *) &message, MESSAGESIZE);
@@ -271,6 +274,7 @@ void ledBlink(byte numberBlinks, unsigned int delayTime) {
 /* Main Program */
 
 void setup() {
+    sleep_disable();
     // override button to ground (needs internal pull-up)
     pinMode(overridePin, OUTPUT);
     digitalWrite(overridePin, HIGH);
@@ -357,6 +361,13 @@ void setup() {
         vw_send((uint8_t *) &message, MESSAGESIZE);
         delay(TXINTERVAL);
     }
+
+    lastActivity = millis(); // wake up //
+}
+
+void WakeUpISR(void) {
+    sleep_disable();
+    detachPcInterrupt(overridePin);
 }
 
 void loop() {
@@ -385,5 +396,11 @@ void loop() {
     if (timerExpired(&currentTime, &lastStatus, STATUSINTERVAL)) {
         makeMessage(&message, nodeID, MSG_STATUS, getBatteryMiliVolts());
         vw_send((uint8_t *) &message, MESSAGESIZE);
+    }
+    if (timerExpired(&currentTime, &lastActivity, INACTIVITYMAX)) {
+        attachPcInterrupt(overridePin, WakeUpISR, CHANGE);
+        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+        sleep_cpu();
+        setup(); // wakeup //
     }
 }
