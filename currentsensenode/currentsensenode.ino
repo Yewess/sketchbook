@@ -26,9 +26,9 @@
 
 #include <EEPROM.h>
 #include <RoboVac.h>
-
-/* Have to copy-paste only what's needed from VW to reduce memory space */
 #include <util/crc16.h>
+/* Definitions */
+#undef DEBUG
 #define VW_MAX_MESSAGE_LEN 30
 #define VW_MAX_PAYLOAD VW_MAX_MESSAGE_LEN-3
 #define VW_RX_RAMP_LEN 160
@@ -39,6 +39,48 @@
 #define VW_RAMP_INC_RETARD (VW_RAMP_INC-VW_RAMP_ADJUST)
 #define VW_RAMP_INC_ADVANCE (VW_RAMP_INC+VW_RAMP_ADJUST)
 #define VW_HEADER_LEN 8
+
+// Constants used once (to save space)
+#define SENSEINTERVAL 101       // 10th of a second
+#define OVERRIDEAMOUNT (60000 * 3)
+#define INACTIVITYMAX (1000 * 60 * 60 * 3) // 3 hours
+
+// AC Frequency
+#define ACHERTZ (60)
+// Number of measurements to capture per wavelength
+#define SAMPLESPERWAVE (20)
+// Wavelength in microseconds
+#define ACWAVELENGTH (1000000.0/(ACHERTZ))
+// Number of microseconds per sample (MUST be larger than AnalogRead)
+#define MICROSPERSAMPLE ((ACWAVELENGTH) / (SAMPLESPERWAVE))
+
+/* I/O constants */
+const int txEnablePin = 1;
+const int txDataPin = 0;
+const int currentSensePin = 5;
+const int overridePin = 3; // has 1.5k pull up allready
+const int batteryPin = 2;
+const int floatingPin = 4; // for random seed
+
+/* Global Variables */
+byte nodeID = 255;
+message_t message;
+unsigned long analogReadMicroseconds = 0; // measured in setup()
+int sampleLow = 0;
+int sampleHigh = 0;
+int sampleRange = 0;
+int threshold = 0;
+unsigned long currentTime = 0; // current ms
+unsigned long overrideEnter = 0; // Time when override mode first set
+unsigned long lastOvertide = 0; // first time override button pressed
+unsigned long lastActivity = 0; // first time override button pressed
+unsigned long lastStatus = 0; // last time status message was sent
+unsigned long overrideInterval = 0;
+unsigned long lastTXEvent = 0; // ms since last entered txEvent()
+unsigned long lastCurrentEvent = 0; // ms since last entered updateCurrentEvent()
+boolean randomSeeded = false;
+boolean overrideMode = false;
+
 uint8_t vw_tx_buf[(VW_MAX_MESSAGE_LEN * 2) + VW_HEADER_LEN] = {
     0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x38, 0x2c
 };
@@ -48,68 +90,13 @@ uint8_t vw_tx_bit = 0;
 uint8_t vw_tx_sample = 0;
 volatile uint8_t vw_tx_enabled = 0;
 uint16_t vw_tx_msg_count = 0;
-uint8_t vw_ptt_pin = 10;
-uint8_t vw_ptt_inverted = 0;
-uint8_t vw_tx_pin = 12;
 uint8_t symbols[] = {
     0xd,  0xe,  0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c,
     0x23, 0x25, 0x26, 0x29, 0x2a, 0x2c, 0x32, 0x34
 };
-uint16_t vw_crc(uint8_t *ptr, uint8_t count) {
-    uint16_t crc = 0xffff;
-
-    while (count-- > 0)
-    crc = _crc_ccitt_update(crc, *ptr++);
-    return crc;
-}
-uint8_t vw_symbol_6to4(uint8_t symbol) {
-    uint8_t i;
-    for (i = 0; i < 16; i++)
-    if (symbol == symbols[i]) return i;
-    return 0; // Not found
-}
-void vw_set_tx_pin(uint8_t pin) {
-    vw_tx_pin = pin;
-}
-void vw_set_ptt_pin(uint8_t pin) {
-    vw_ptt_pin = pin;
-}
-void vw_set_ptt_inverted(uint8_t inverted) {
-    vw_ptt_inverted = inverted;
-}
-uint8_t _timer_calc(uint16_t speed, uint16_t max_ticks, uint16_t *nticks) {
-    uint16_t prescalers[] = {0, 1, 8, 64, 256, 1024, 3333};
-    uint8_t prescaler=0; // index into array & return bit value
-    unsigned long ulticks; // calculate by ntick overflow
-
-    if (speed == 0) {
-        *nticks = 0;
-        return 0;
-    }
-    for (prescaler=1; prescaler < 7; prescaler += 1)
-    {
-        float clock_time = (1.0 / (float(F_CPU) / float(prescalers[prescaler])));
-        float bit_time = ((1.0 / float(speed)) / 8.0);
-        ulticks = long(bit_time / clock_time);
-        if ((ulticks > 1) && (ulticks < max_ticks)) {
-            break; // found prescaler
-        }
-    }
-    if ((prescaler == 6) || (ulticks < 2) || (ulticks > max_ticks)) {
-        *nticks = 0;
-        return 0;
-    }
-
-    *nticks = ulticks;
-    return prescaler;
-}
 void vw_setup(uint16_t speed) {
-    uint16_t nticks; // number of prescaled ticks needed
-    uint8_t prescaler; // Bit values for CS0[2:0]
-
-    prescaler = _timer_calc(speed, (uint8_t)-1, &nticks);
-    if (!prescaler)
-        return; // fault
+    uint16_t nticks = 125; // 2000 bps @ 16Mhz
+    uint8_t prescaler = 8; // Bit values for CS0[2:0]
 
     TCCR0A = 0;
     TCCR0A = _BV(WGM01); // Turn on CTC mode / Output Compare pins disconnected
@@ -118,20 +105,20 @@ void vw_setup(uint16_t speed) {
     OCR0A = uint8_t(nticks);
     TIMSK |= _BV(OCIE0A);
 
-    pinMode(vw_tx_pin, OUTPUT);
-    pinMode(vw_ptt_pin, OUTPUT);
-    digitalWrite(vw_ptt_pin, vw_ptt_inverted);
+    pinMode(txDataPin, OUTPUT);
+    pinMode(txEnablePin, OUTPUT);
+    digitalWrite(txEnablePin, 0);
 }
 void vw_tx_start() {
     vw_tx_index = 0;
     vw_tx_bit = 0;
     vw_tx_sample = 0;
-    digitalWrite(vw_ptt_pin, true ^ vw_ptt_inverted);
+    digitalWrite(txEnablePin, 1);
     vw_tx_enabled = true;
 }
 void vw_tx_stop() {
-    digitalWrite(vw_ptt_pin, false ^ vw_ptt_inverted);
-    digitalWrite(vw_tx_pin, false);
+    digitalWrite(txEnablePin, 0);
+    digitalWrite(txDataPin, false);
     vw_tx_enabled = false;
 }
 uint8_t vx_tx_active() {
@@ -170,7 +157,7 @@ uint8_t vw_send(uint8_t* buf, uint8_t len) {
 }
 
 SIGNAL(TIM0_COMPA_vect) {
-    digitalWrite(vw_tx_pin, vw_tx_buf[vw_tx_index] & (1 << vw_tx_bit++));
+    digitalWrite(txDataPin, vw_tx_buf[vw_tx_index] & (1 << vw_tx_bit++));
     if (vw_tx_bit >= 6) {
         vw_tx_bit = 0;
         vw_tx_index++;
@@ -180,48 +167,6 @@ SIGNAL(TIM0_COMPA_vect) {
 }
 
 /* end of VW copy-paste */
-
-/* Definitions */
-#undef DEBUG
-
-// Constants used once (to save space)
-#define SENSEINTERVAL 101       // 10th of a second
-#define OVERRIDEAMOUNT (60000 * 3)
-
-// AC Frequency
-#define ACHERTZ (60)
-// Number of measurements to capture per wavelength
-#define SAMPLESPERWAVE (20)
-// Wavelength in microseconds
-#define ACWAVELENGTH (1000000.0/(ACHERTZ))
-// Number of microseconds per sample (MUST be larger than AnalogRead)
-#define MICROSPERSAMPLE ((ACWAVELENGTH) / (SAMPLESPERWAVE))
-
-/* I/O constants */
-const int txEnablePin = 1;
-const int txDataPin = 0;
-const int currentSensePin = 5;
-const int overridePin = 3; // has 1.5k pull up allready
-const int batteryPin = 2;
-const int floatingPin = 4; // for random seed
-
-/* Global Variables */
-byte nodeID = 255;
-message_t message;
-unsigned long analogReadMicroseconds = 0; // measured in setup()
-int sampleLow = 0;
-int sampleHigh = 0;
-int sampleRange = 0;
-int threshold = 0;
-unsigned long currentTime = 0; // current ms
-unsigned long overrideEnter = 0; // Time when override mode first set
-unsigned long lastOvertide = 0; // first time override button pressed
-unsigned long lastStatus = 0; // last time status message was sent
-unsigned long overrideInterval = 0;
-unsigned long lastTXEvent = 0; // ms since last entered txEvent()
-unsigned long lastCurrentEvent = 0; // ms since last entered updateCurrentEvent()
-boolean randomSeeded = false;
-boolean overrideMode = false;
 
 /* Functions */
 
@@ -337,11 +282,9 @@ void setup() {
 
     pinMode(txDataPin, OUTPUT);
     digitalWrite(txDataPin, LOW);
-    vw_set_tx_pin(txDataPin);
 
     pinMode(txEnablePin, OUTPUT);
     digitalWrite(txEnablePin, LOW);
-    vw_set_ptt_pin(txEnablePin);
 
     overrideCancel();
 
