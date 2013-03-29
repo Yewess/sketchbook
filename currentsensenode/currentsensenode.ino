@@ -57,8 +57,8 @@
 #define MICROSPERSAMPLE ((ACWAVELENGTH) / (SAMPLESPERWAVE))
 
 /* I/O constants */
-const int txEnablePin = 1;
-const int txDataPin = 0;
+const int txEnablePin = 0;
+const int txDataPin = 1;
 const int currentSensePin = 5;
 const int overridePin = 3; // has 1.5k pull up allready
 const int batteryPin = 2;
