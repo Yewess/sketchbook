@@ -70,14 +70,15 @@ static VirtualWire::Receiver* receiver = 0;
 
 /** Prescale table for 8-bit Timer1. Index is prescale setting */
 static const uint16_t prescale[] PROGMEM = {
-  0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384 
+  0, 1, 8, 64, 256, 1024
 };
 
 #else
 
 /** Prescale table for 16-bit Timer1. Index is prescale setting */
 static const uint16_t prescale[] PROGMEM = {
-  0, 1, 8, 64, 256, 1024
+  0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384
+
 };
 
 #endif
@@ -205,22 +206,30 @@ VirtualWire::begin(uint16_t speed, uint8_t mode)
 #if defined(__AVR_ATtiny25__)		\
  || defined(__AVR_ATtiny45__)		\
  || defined(__AVR_ATtiny85__)
+
   // Figure out prescaler value and counter match value
   prescaler = timer_setting(speed * SAMPLES_PER_BIT, 8, &nticks);
   if (!prescaler) return (0);
 
+#ifdef DIGISPARK
   // Turn on CTC mode / Output Compare pins disconnected
-  TCCR1 = _BV(PWM1A) | prescaler;
+  TCCR0A = _BV(WGM01);
+  TCCR0B = prescaler;
 
   // Number of ticks to count before firing interrupt
-  OCR1A = uint8_t(nticks);
+  OCR0A = uint8_t(nticks);
 #else
+  TCCR1 = _BV(PWM1A) | prescaler;
+  OCR1A = uint8_t(nticks);
+#endif // DIGISPARK
+
+#else // not __AVR_ATtinyX5__
   // Figure out prescaler value and counter match value
   prescaler = timer_setting(speed * SAMPLES_PER_BIT, 16, &nticks);
   if (!prescaler) return (0);
 
   // Output Compare pins disconnected, and turn on CTC mode
-  TCCR1A = 0; 
+  TCCR1A = 0;
   TCCR1B = _BV(WGM12);
 
   // Convert prescaler index to TCCRnB prescaler bits CS10, CS11, CS12
@@ -240,16 +249,25 @@ VirtualWire::enable()
 #if defined(__AVR_ATtiny25__)		\
  || defined(__AVR_ATtiny45__)		\
  || defined(__AVR_ATtiny85__)
+
   // Enable interrupt on compare
-  TIMSK |= _BV(OCIE1A);
+#ifdef DIGISPARK
+  TIMSK |= _BV(OCIE0A);
 #else
+  TIMSK |= _BV(OCIE1A);
+#endif // DIGISPARK
+
+#else // not __AVR_ATtinyX5__
+
   // Enable interrupt
 #ifdef TIMSK1
   TIMSK1 |= _BV(OCIE1A);
 #else
   TIMSK |= _BV(OCIE1A);
-#endif
-#endif
+#endif // TIMSK1
+
+#endif // __AVR_ATtinyX5__
+
 }
 
 void
@@ -258,16 +276,24 @@ VirtualWire::disable()
 #if defined(__AVR_ATtiny25__)		\
  || defined(__AVR_ATtiny45__)		\
  || defined(__AVR_ATtiny85__)
+
   // Enable interrupt on compare
-  TIMSK &= ~_BV(OCIE1A);
+#ifdef DIGISPARK
+  TIMSK &= ~_BV(OCIE0A);
 #else
+  TIMSK |= _BV(OCIE1A);
+#endif // DIGISPARK
+
+#else // not __AVR_ATtinyX5__
+
   // Enable interrupt
 #ifdef TIMSK1
   TIMSK1 &= ~_BV(OCIE1A);
 #else
   TIMSK &= ~_BV(OCIE1A);
-#endif
-#endif
+#endif // TIMSK1
+
+#endif // __AVR_ATtinyX5__
 }
 
 VirtualWire::Receiver::Receiver(uint8_t rx):
@@ -388,7 +414,12 @@ VirtualWire::Transmitter::send(void* buf, uint8_t len)
  * overflows. Its job is to output the next bit from the transmitter
  * (every 8 calls) and to call the PLL code if the receiver is enabled.
  */
+
+#ifdef DIGISPARK
+SIGNAL(TIM0_COMPA_vect)
+#else
 ISR(TIMER1_COMPA_vect)
+#endif // DIGISPARK
 {
   // Check if the receiver pin should be sampled
   if ((receiver != 0 && receiver->m_enabled)

@@ -37,7 +37,12 @@
 #include <avr/pgmspace.h>
 #include <stdint.h>
 
+/* When compiling for DigiSpark, #define DIGISPARK in your sketch */
+#ifdef DIGISPARK
+extern "C" void TIM0_COMPA_vect(void) __attribute__ ((signal));
+#else
 extern "C" void TIMER1_COMPA_vect(void) __attribute__ ((signal));
+#endif // DIGISPARK
 
 class VirtualWire {
 public:
@@ -199,7 +204,11 @@ public:
     uint8_t m_good;
 
     /** The interrupt handler is a friend */
+#ifdef DIGISPARK
+    friend void TIM0_COMPA_vect(void);
+#else
     friend void TIMER1_COMPA_vect(void);
+#endif // DIGISPARK
 
     /**
      * Phase locked loop tries to synchronise with the transmitter so
@@ -314,7 +323,11 @@ public:
     uint16_t m_msg_count;
 
     /** The interrupt handler is a friend */
+#ifdef DIGISPARK
+    friend void TIM0_COMPA_vect(void);
+#else
     friend void TIMER1_COMPA_vect(void);
+#endif // DIGISPARK
 
   public:
     /**
