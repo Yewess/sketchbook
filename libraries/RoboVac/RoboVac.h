@@ -25,10 +25,9 @@
 
 // Definitions
 #define MESSAGEMAGIC 0x9876
-#define MESSAGEVERSION 0x02
+#define MESSAGEVERSION 0x04
 #define MESSAGESIZE sizeof(message_t)
-#define TXINTERVAL 1002 // Miliseconds between transmits
-#define STATUSINTERVAL (300000) // 5 minutes
+#define TXINTERVAL 1000 // Miliseconds between transmits
 #define RXTXBAUD 2000 // Rf Baud
 #define SERIALBAUD 115200
 #define NODENAMEMAX (16 + 1) // name characters + 1 for NULL
@@ -45,6 +44,7 @@
 #define LCDLARROW 127 // left arrow character
 #define LCDBLOCK 255 // Block Character
 #define SERVOINCDEC 1 // amount to move hi/lo range
+#define TRIGGER_DEFAULT 100 // (100 mV) if none is set
 
 // Macros
 #define STATE2CASE(VAR, STATE) case STATE: VAR = #STATE; break;
@@ -127,9 +127,9 @@ typedef struct nodeInfo_s {
     byte port_id; // servo node_id is mapped to
     word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
     word servo_max; // maximum limit of travel
-    unsigned int receive_count; // number of messages received over THRESHOLD
-    unsigned long first_heard; // timestamp HELLO was received
-    unsigned long last_heard; // timestamp last message was received while in breach
+    unsigned int receive_count; // number of messages received
+    unsigned int drop_count; // number of missing messages
+    unsigned long last_heard; // timestamp last message received
     byte batteryPercent; // percent battery remaining
     char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
@@ -158,20 +158,14 @@ typedef enum lcdState_e {
     LCD_ENDSTATE, // Go back to LCD_ACTIVEWAIT
 } lcdState_t;
 
-typedef enum msgType_e {
-    MSG_HELLO, // switched on
-    MSG_STATUS, // Status message
-    MSG_BREACH, // Measurement threshold exceeded
-    MSG_MAXTYPE, // Do not use
-} msgType_t;
-
 typedef struct message_s {
-    word magic; // constant 0x42                              (2 bytes)
-    byte version; // protocol version                         (1 byte)
-    byte node_id; // node ID                                  (1 byte)
-    byte msgType; // msgType_t                                (1 byte)
-    unsigned long up_time; // number of miliseconds running   (4 bytes)
-    int batteryMiliVolts; // Battery voltage                  (2 bytes)
+    word magic; // constant 0x42                                (2 bytes)
+    byte version; // protocol version                           (1 byte)
+    byte node_id; // node ID                                    (1 byte)
+    unsigned long msg_count; // number of last message received (4 bytes)
+    int batteryMiliVolts; // Battery voltage                    (2 bytes)
+    int peak_current;                                       //  (2 byte)
+    int threshold; // activation threshold                      (1 byte)
 } message_t;
 
 typedef struct vacPower_s {
@@ -192,8 +186,7 @@ struct menuEntry_s {
 
 typedef struct menuEntry_s menuEntry_t;
 
-void makeMessage(message_t *message, byte nodeID,
-                 msgType_t msgType, int batteryMiliVolts);
+void makeMessage(message_t *message, int batteryMiliVolts, int peak_current);
 
 void copyMessage(message_t *destination, const message_t *source);
 

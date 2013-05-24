@@ -21,33 +21,23 @@
 #include <Arduino.h>
 #include <RoboVac.h>
 
-void makeMessage(message_t *message, byte nodeID,
-                 msgType_t msgType, int batteryMiliVolts) {
+void makeMessage(message_t *message, int batteryMiliVolts, int peak_current) {
     message->magic = MESSAGEMAGIC;
     message->version = MESSAGEVERSION;
-    message->node_id = nodeID;
-    message->msgType = (byte)msgType;
-    message->up_time = millis();
+    message->msg_count = message->msg_count + 1;
     message->batteryMiliVolts = batteryMiliVolts;
-}
-
-void copyMessage(message_t *destination, const message_t *source) {
-    destination->magic = source->magic;
-    destination->version = source->version;
-    destination->node_id = source->node_id;
-    destination->msgType = source->msgType;
-    destination->up_time = source->up_time;
-    destination->batteryMiliVolts = source->batteryMiliVolts;
+    message->peak_current = peak_current;
 }
 
 boolean validMessage(const message_t *message) {
     if (     (message->magic == MESSAGEMAGIC) &&
              (message->version == MESSAGEVERSION) &&
-             (message->msgType >= (byte)MSG_HELLO) &&
-             (message->msgType < (byte)MSG_MAXTYPE) &&
              (message->node_id > 0) &&
              (message->node_id < 255) &&
-             (message->batteryMiliVolts <= 5000) ) {
+             (message->batteryMiliVolts <= 5000) &&
+             (message->batteryMiliVolts >= 1800) &&
+             (message->msg_count > 1) && // ignore first message
+             (message->threshold > TRIGGER_DEFAULT)) {
         return true;
     } else {
         return false;
@@ -56,6 +46,7 @@ boolean validMessage(const message_t *message) {
 
 const unsigned long *timerExpired(const unsigned long *currentTime,
                                   const unsigned long *lastTime,
+                                  // sometimes this is a macro
                                   unsigned long interval) {
     static unsigned long elapsedTime=0;
 

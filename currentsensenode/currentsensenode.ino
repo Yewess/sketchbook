@@ -43,9 +43,8 @@
 #define VW_HEADER_LEN 8
 
 // Constants used once (to save space)
-#define SENSEINTERVAL 101       // 10th of a second
-#define OVERRIDEAMOUNT (60000 * 3)
-#define INACTIVITYMAX (1000 * 60 * 60 * 3) // 3 hours
+#define OVERRIDEAMOUNT (unsigned int) (60000 * 5) // 5 minutes
+#define INACTIVITYMAX (unsigned int) (1000 * 60 * 60 * 3) // 3 hours
 
 // AC Frequency
 #define ACHERTZ (60)
@@ -65,23 +64,19 @@ const int batteryPin = 2;
 const int floatingPin = 4; // for random seed
 
 /* Global Variables */
-byte nodeID = 255;
 message_t message;
 unsigned long analogReadMicroseconds = 0; // measured in setup()
 int sampleLow = 0;
 int sampleHigh = 0;
 int sampleRange = 0;
-int threshold = 0;
 unsigned long currentTime = 0; // current ms
-unsigned long overrideEnter = 0; // Time when override mode first set
+unsigned long overrideStart = 0; // Time when override mode first set
 unsigned long lastOvertide = 0; // first time override button pressed
 unsigned long lastActivity = 0; // first time override button pressed
 unsigned long lastStatus = 0; // last time status message was sent
 unsigned long overrideInterval = 0;
 unsigned long lastTXEvent = 0; // ms since last entered txEvent()
-unsigned long lastCurrentEvent = 0; // ms since last entered updateCurrentEvent()
 boolean randomSeeded = false;
-boolean overrideMode = false;
 
 uint8_t vw_tx_buf[(VW_MAX_MESSAGE_LEN * 2) + VW_HEADER_LEN] = {
     0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x38, 0x2c
@@ -185,6 +180,15 @@ boolean overridePressed(void) {
     }
 }
 
+void ledBlink(unsigned int numberBlinks, unsigned int delayTime) {
+    for (; numberBlinks > 0; numberBlinks--) {
+        digitalWrite(txEnablePin, HIGH);
+        delay(delayTime);
+        digitalWrite(txEnablePin, LOW);
+        delay(delayTime);
+    }
+}
+
 byte getRandomByte(void) {
     if (!randomSeeded) {
         randomSeed(analogRead(floatingPin) + millis());
@@ -195,17 +199,10 @@ byte getRandomByte(void) {
 void txEvent(void) {
     if (thresholdBreached()) {
         lastActivity = currentTime;
-        digitalWrite(txEnablePin, HIGH);
-        makeMessage(&message, nodeID, MSG_BREACH, getBatteryMiliVolts());
+        makeMessage(&message, getBatteryMiliVolts(), sampleRange);
         vw_send((uint8_t *) &message, MESSAGESIZE);
-        PRINTMESSAGE(millis(), message, 0);
-    } else {
-        digitalWrite(txEnablePin, LOW);
-    }
-
-    // Check override button during slow event
-    if (overridePressed) {
-        incOverrideTime(); // event timer does debounce
+        vw_wait_tx(); // don't interrupt a tx in progress
+        vw_tx_stop(); // light off
     }
 }
 
@@ -215,73 +212,60 @@ int updateCurrentEvent(void) {
     // Fill data elements
     for (byte index=0; index< SAMPLESPERWAVE; index++) {
         sample = analogRead(currentSensePin); // 512 == 0 volts
-        if (sample >= sampleHigh) {
+        // translate into miliVolts
+        sample = map(sample, 0, 1023, -5000, 5000);
+        if (sample > sampleHigh) {
             sampleHigh = sample;
-        } else if (sample <= sampleLow) {
+        }
+        if (sample < sampleLow) {
             sampleLow = sample;
         }
         // wait difference between MICROSPERSAMPLE and analogReadMicroseconds
         delayMicroseconds(MICROSPERSAMPLE - analogReadMicroseconds);
     }
-    return sampleHigh - sampleLow;
-}
-
-void overrideCancel(void) {
-    overrideMode = false;
-    overrideEnter = 0;
-    overrideInterval = 0;
+    return (sampleHigh - sampleLow) / 2; // Max peak @ +5000
 }
 
 boolean thresholdBreached() {
-    if (sampleRange >= threshold) {
-        overrideCancel();
+    if ((sampleRange >= message.threshold) ||
+        (sampleRange < 0)) { // override mode
         return true;
-    } else { // under threshold
-        if (overrideMode) {
-            return true;
-        }
-        // not in override & not over threshold
+    } else {
         return false;
     }
 }
 
 void incOverrideTime() {
     // Check if already in override mode or not
-    if  ((overrideMode == false) &&
-         (overrideEnter == 0) &&
-         (overrideInterval == 0)) {
-        // Entering override mode
-        overrideEnter = millis();
+    if (overrideStart == 0) { // Entering override mode first time
+        overrideStart = currentTime;
         overrideInterval = OVERRIDEAMOUNT;
-        overrideMode = true;
-    } else {
-        // already in overrde, add more time
+    } else { // already in override mode
         overrideInterval += OVERRIDEAMOUNT;
     }
-    // signal to user
-    ledBlink(1, 250);
 }
 
-void ledBlink(byte numberBlinks, unsigned int delayTime) {
-    for (; numberBlinks > 0; numberBlinks--) {
-        digitalWrite(txEnablePin, HIGH);
-        delay(delayTime);
-        digitalWrite(txEnablePin, LOW);
-        delay(delayTime);
-    }
+/*
+void WakeUpISR(void) {
+    sleep_disable();
+    detachPcInterrupt(overridePin);
 }
+
+*/
 
 /* Main Program */
 
 void setup() {
-    sleep_disable();
-    // override button to ground (needs internal pull-up)
+    //sleep_disable();
+
+    // override button to ground
     pinMode(overridePin, OUTPUT);
-    digitalWrite(overridePin, HIGH);
+    digitalWrite(overridePin, HIGH); // enable internal pull-up
 
     pinMode(batteryPin, INPUT);
 
     pinMode(floatingPin, INPUT);
+
     pinMode(currentSensePin, INPUT);
 
     pinMode(txDataPin, OUTPUT);
@@ -290,13 +274,24 @@ void setup() {
     pinMode(txEnablePin, OUTPUT);
     digitalWrite(txEnablePin, LOW);
 
-    overrideCancel();
+    // Calibrate Analog Read speed (rc timers affected by temperature
+    //                              or clock ref changed while sleeping)
+    // Capture the start time in microseconds
+    unsigned long startTime = (millis() * 1000) + micros();
+    // 10,000 analog reads for average (below)
+    for (int count = 0; count < 10000; count++) {
+        message.threshold = analogRead(currentSensePin);
+    }
+    // Calculate duration in microseconds
+    // divide the duration by number of reads
+    analogReadMicroseconds = (((millis() * 1000) + micros()) - startTime) / 10000;
 
-    //setNodeID();
-    // get currently set value (255 is default)
-    nodeID = EEPROM.read(0);
+    // get node_id;
+    message.node_id = EEPROM.read(0);
+    // get threshold
+    message.threshold = EEPROM.read(1) << 8;
+    message.threshold |= EEPROM.read(2);
 
-    // sets nodeID == 0 on reset
     // must hold button for ~4 seconds, remaining is entropy
     for(int count=0; count < 40; count++) {
         if (!overridePressed()) {
@@ -305,102 +300,102 @@ void setup() {
             // blink light
             digitalWrite(txEnablePin, !digitalRead(txEnablePin));
         }
-        delay(100);
+        delay(50);
+        updateCurrentEvent(); // gather max High & min Low over time
     }
+
     // signal reset mode entered & add entropy
     while (overridePressed()) {
-        nodeID = 0; // reset signal
+        message.node_id = 255;
+        message.threshold = TRIGGER_DEFAULT;
         digitalWrite(txEnablePin, HIGH);
-        delay(50);
+        updateCurrentEvent(); // gather max High & min Low over time
     }
     digitalWrite(txEnablePin, LOW);
 
-    while ((nodeID == 255) || (nodeID == 0)) {
-        nodeID = getRandomByte();
+    while ((message.node_id == 255)) { // new or reset mode
+        message.node_id = getRandomByte();
+        sampleRange = updateCurrentEvent(); // one last reading
+        if (sampleRange >= TRIGGER_DEFAULT) {
+            message.threshold = sampleRange;
+        }
     }
+    // Check Assumptions
+    if ((analogReadMicroseconds > MICROSPERSAMPLE) ||
+        (message.threshold > 4500)) {
+        // SAMPLESPERWAVE is too big
+        // or sensor is saturated
+        while (true)
+            ledBlink((unsigned int)-1, 1000);
+    }
+
     // only write if changed
-    if (nodeID != EEPROM.read(0)) {
+    if (message.node_id != EEPROM.read(0)) {
         ledBlink(4, 250);
-        EEPROM.write(0, nodeID);
+        EEPROM.write(0, message.node_id);
+        EEPROM.write(1, highByte(message.threshold));
+        EEPROM.write(2, lowByte(message.threshold));
+    } else {
+        ledBlink(2, 250);
     }
 
-    // calibrate Analog Read speed
-    // Capture the start time in microseconds
-    unsigned long startTime = (millis() * 1000) + micros();
-    // 10,000 analog reads for average (below)
-    for (int count = 0; count < 10000; count++) {
-        threshold = analogRead(currentSensePin);
-    }
-    // Calculate duration in microseconds
-    // divide the duration by number of reads
-    analogReadMicroseconds = (((millis() * 1000) + micros()) - startTime) / 10000;
-
-    //calibrateThreshold();
-    for(byte count=0; count < 100; count++) {
-        threshold = updateCurrentEvent(); // gather max High & min Low over time
-    }
-    // 256 signals a calibration error
-    threshold = constrain(threshold * 5, 5, 256);
     // reset reading for next time
+    sampleRange = 0;
     sampleHigh = 0;
     sampleLow = 0;
-
-    // Check Assumptions
-    if ((threshold == 256) || (analogReadMicroseconds > MICROSPERSAMPLE)) {
-        // signal error, MICROSPERSAMPLE is too small!
-        ledBlink(255, (unsigned int)-1);
-    }
-
+    overrideStart = 0;
+    overrideInterval = 0;
 
     // installs ISR
     vw_setup(RXTXBAUD);
 
-    // Sent 5 hello messages
-    for (char count=0; count < 5; count++) {
-        makeMessage(&message, nodeID, MSG_HELLO, getBatteryMiliVolts());
-        vw_send((uint8_t *) &message, MESSAGESIZE);
-        delay(TXINTERVAL);
-    }
-
     lastActivity = millis(); // wake up //
-}
 
-void WakeUpISR(void) {
-    sleep_disable();
-    detachPcInterrupt(overridePin);
+    digitalWrite(txEnablePin, LOW); // light off
 }
 
 void loop() {
     currentTime = millis();
-    if (timerExpired(&currentTime, &lastCurrentEvent, SENSEINTERVAL)) {
-        // clear previous data
+
+    if (overrideStart == 0) { // not in override
+        // Sample data
         sampleRange = updateCurrentEvent();
-        lastCurrentEvent = currentTime;
+    } else { // in override mode
+        sampleRange = -1;
+        if (timerExpired(&currentTime, &overrideStart, overrideInterval)) {
+            // cancel override mode
+            overrideStart = 0;
+            overrideInterval = 0;
+        }
     }
+
+    if (overridePressed()) {
+        while (overridePressed()) {
+            digitalWrite(txEnablePin, HIGH); // light on
+        }
+        delay(10); // debounce
+        incOverrideTime();
+    }
+
     if (timerExpired(&currentTime, &lastTXEvent, TXINTERVAL)) {
         txEvent(); // Also check override button press
-        // jiggle lastTXEvent +/- 255ms to help with collisions
-        lastTXEvent = getRandomByte(); // borrow this for a random even/odd
-        if ((lastTXEvent % 2) == 0) { // add time
-            lastTXEvent = currentTime - lastTXEvent;
-        } else {
-            lastTXEvent = currentTime + lastTXEvent;
-        }
+
+        // jiggle lastTXEvent +/- 1/5 TXINTERVAL to help with collisions
+        lastTXEvent = currentTime;
+        lastTXEvent += map(random(TXINTERVAL/5) + 1, 0, (TXINTERVAL/5),
+                           -1 * (TXINTERVAL/10), (TXINTERVAL/10));
         // reset reading for next time
         sampleHigh = 0;
         sampleLow = 0;
     }
-    if (timerExpired(&currentTime, &overrideEnter, overrideInterval)) {
-        overrideCancel();
-    }
-    if (timerExpired(&currentTime, &lastStatus, STATUSINTERVAL)) {
-        makeMessage(&message, nodeID, MSG_STATUS, getBatteryMiliVolts());
-        vw_send((uint8_t *) &message, MESSAGESIZE);
-    }
+
+/*
     if (timerExpired(&currentTime, &lastActivity, INACTIVITYMAX)) {
+        digitalWrite(txEnablePin, LOW); // light off
         attachPcInterrupt(overridePin, WakeUpISR, CHANGE);
         set_sleep_mode(SLEEP_MODE_PWR_DOWN);
         sleep_cpu();
         setup(); // wakeup //
     }
+*/
 }
