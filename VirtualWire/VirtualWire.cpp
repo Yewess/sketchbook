@@ -10,12 +10,12 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General
  * Public License along with this library; if not, write to the
  * Free Software Foundation, Inc., 59 Temple Place, Suite 330,
@@ -26,32 +26,32 @@
  * messages, without addressing, retransmit or acknowledgment, a bit
  * like UDP over wireless, using ASK (Amplitude Shift
  * Keying). Supports a number of inexpensive radio transmitters and
- * receivers. 
+ * receivers.
  */
 
-#include "VirtualWire.hh"
+#include "VirtualWire.h"
 #include <util/crc16.h>
 
 #define membersof(x) (sizeof(x)/sizeof(x[0]))
 
-const uint8_t 
+const uint8_t
 VirtualWire::symbols[] PROGMEM = {
-  0xd,  0xe,  0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c, 
+  0xd,  0xe,  0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c,
   0x23, 0x25, 0x26, 0x29, 0x2a, 0x2c, 0x32, 0x34
 };
 
 uint8_t VirtualWire::s_mode = 0;
 
-uint16_t 
+uint16_t
 VirtualWire::CRC(uint8_t* ptr, uint8_t count)
 {
   uint16_t crc = 0xffff;
-  while (count-- > 0) 
+  while (count-- > 0)
     crc = _crc_ccitt_update(crc, *ptr++);
   return (crc);
 }
 
-uint8_t 
+uint8_t
 VirtualWire::symbol_6to4(uint8_t symbol)
 {
   for (uint8_t i = 0; i < membersof(symbols); i++)
@@ -92,7 +92,7 @@ static const uint16_t prescale[] PROGMEM = {
  * @return prescale or zero(0).
  */
 static uint8_t
-timer_setting(uint16_t speed, uint8_t bits, uint16_t* nticks) 
+timer_setting(uint16_t speed, uint8_t bits, uint16_t* nticks)
 {
   uint16_t max_ticks = (1 << bits) - 1;
   uint8_t res = 0;
@@ -108,7 +108,7 @@ timer_setting(uint16_t speed, uint8_t bits, uint16_t* nticks)
   return (res);
 }
 
-void 
+void
 VirtualWire::Receiver::PLL()
 {
   // Integrate each sample
@@ -116,7 +116,7 @@ VirtualWire::Receiver::PLL()
 
   if (m_sample != m_last_sample) {
     // Transition, advance if ramp > TRANSITION otherwise retard
-    m_pll_ramp += 
+    m_pll_ramp +=
       ((m_pll_ramp < RAMP_TRANSITION) ? RAMP_INC_RETARD : RAMP_INC_ADVANCE);
     m_last_sample = m_sample;
   }
@@ -126,7 +126,7 @@ VirtualWire::Receiver::PLL()
   }
   if (m_pll_ramp >= RAMP_MAX) {
     // Add this to the 12th bit of vw_rx_bits, LSB first. The last 12
-    // bits are kept 
+    // bits are kept
     m_bits >>= 1;
 
     // Check the integrator to see how many samples in this cycle were
@@ -137,7 +137,7 @@ VirtualWire::Receiver::PLL()
     m_pll_ramp -= RAMP_MAX;
 
     // Clear the integral for the next cycle
-    m_integrator = 0; 
+    m_integrator = 0;
 
     if (m_active) {
       // We have the start symbol and now we are collecting message
@@ -146,10 +146,10 @@ VirtualWire::Receiver::PLL()
 	// Have 12 bits of encoded message == 1 byte encoded. Decode
 	// as 2 lots of 6 bits into 2 lots of 4 bits. The 6 lsbits are
 	// the high nybble.
-	uint8_t data = 
-	  (symbol_6to4(m_bits & SYMBOL_MASK) << 4) | 
+	uint8_t data =
+	  (symbol_6to4(m_bits & SYMBOL_MASK) << 4) |
 	  symbol_6to4(m_bits >> BITS_PER_SYMBOL);
-	
+
 	// The first decoded byte is the byte count of the following
 	// message the count includes the byte count and the 2
 	// trailing FCS bytes. REVISIT: may also include the ACK flag
@@ -157,7 +157,7 @@ VirtualWire::Receiver::PLL()
 	if (m_length == 0) {
 	  // The first byte is the byte count. Check it for
 	  // sensibility. It cant be less than 4, since it includes
-	  // the bytes count itself and the 2 byte FCS 
+	  // the bytes count itself and the 2 byte FCS
 	  m_count = data;
 	  if (m_count < MESSAGE_MIN || m_count > MESSAGE_MAX) {
 	    // Stupid message length, drop the whole thing
@@ -190,7 +190,7 @@ VirtualWire::Receiver::PLL()
   }
 }
 
-bool 
+bool
 VirtualWire::begin(uint16_t speed, uint8_t mode)
 {
   // Number of prescaled ticks needed
@@ -270,13 +270,13 @@ VirtualWire::disable()
 #endif
 }
 
-VirtualWire::Receiver::Receiver(uint8_t rx) : 
+VirtualWire::Receiver::Receiver(uint8_t rx):
   m_pin(rx)
 {
   receiver = this;
 }
 
-bool 
+bool
 VirtualWire::Receiver::await(unsigned long ms)
 {
   // Allow low power mode while waiting
@@ -294,23 +294,25 @@ VirtualWire::Receiver::recv(void* buf, uint8_t len, uint32_t ms)
 
   // Message check-sum error
   if (CRC(m_buffer, m_length) != CHECK_SUM) return (-1);
-    
+
   // Wait until done is set before reading length then remove
-  // bytecount and FCS  
+  // bytecount and FCS
   uint8_t rxlen = m_length - 3;
-    
+
   // Copy message (good or bad). Skip count byte
   if (len > rxlen) len = rxlen;
   memcpy(buf, m_buffer + 1, len);
-    
+
+
   // OK, got that message thanks
+  memset(m_buffer, 0, MESSAGE_MAX);
   m_done = false;
-    
+
   // Return actual number of bytes received
   return (len);
 }
 
-const uint8_t 
+const uint8_t
 VirtualWire::Transmitter::header[HEADER_MAX] PROGMEM = {
   0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x2a, 0x38, 0x2c
 };
@@ -322,7 +324,7 @@ VirtualWire::Transmitter::Transmitter(uint8_t tx) :
   memcpy_P(m_buffer, header, sizeof(header));
 }
 
-bool 
+bool
 VirtualWire::Transmitter::begin()
 {
   m_index = 0;
@@ -332,13 +334,13 @@ VirtualWire::Transmitter::begin()
   return (1);
 }
 
-void 
+void
 VirtualWire::Transmitter::await()
 {
   while (m_enabled);
 }
 
-bool 
+bool
 VirtualWire::Transmitter::send(void* buf, uint8_t len)
 {
   // Check that the message is not too large
@@ -347,7 +349,7 @@ VirtualWire::Transmitter::send(void* buf, uint8_t len)
   uint8_t *tp = transmitter->m_buffer + HEADER_MAX;
   uint8_t *bp = (uint8_t*) buf;
   uint16_t crc = 0xffff;
-  
+
   // Wait for transmitter to become available
   await();
 
@@ -357,7 +359,7 @@ VirtualWire::Transmitter::send(void* buf, uint8_t len)
   *tp++ = pgm_read_byte(&symbols[count >> 4]);
   *tp++ = pgm_read_byte(&symbols[count & 0xf]);
 
-  // Encode the message into 6 bit symbols. Each byte is converted into 
+  // Encode the message into 6 bit symbols. Each byte is converted into
   // 2 X 6-bit symbols, high nybble first, low nybble second
   for (uint8_t i = 0; i < len; i++) {
     crc = _crc_ccitt_update(crc, bp[i]);
@@ -392,8 +394,8 @@ ISR(TIMER1_COMPA_vect)
   if ((receiver != 0 && receiver->m_enabled)
       && (transmitter == 0 || !transmitter->m_enabled))
     receiver->m_sample = digitalRead(receiver->m_pin);
-    
-  // Do transmitter stuff first to reduce transmitter bit jitter due 
+
+  // Do transmitter stuff first to reduce transmitter bit jitter due
   // to variable receiver processing
   if (transmitter != 0) {
     if (transmitter->m_enabled && transmitter->m_sample++ == 0) {
@@ -404,8 +406,8 @@ ISR(TIMER1_COMPA_vect)
 	transmitter->m_msg_count++;
       }
       else {
-	digitalWrite(transmitter->m_pin, 
-		     transmitter->m_buffer[transmitter->m_index] & 
+	digitalWrite(transmitter->m_pin,
+		     transmitter->m_buffer[transmitter->m_index] &
 		     (1 << transmitter->m_bit++));
 	if (transmitter->m_bit >= VirtualWire::BITS_PER_SYMBOL) {
 	  transmitter->m_bit = 0;
