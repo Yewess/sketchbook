@@ -44,7 +44,9 @@
 #define LCDLARROW 127 // left arrow character
 #define LCDBLOCK 255 // Block Character
 #define SERVOINCDEC 1 // amount to move hi/lo range
-#define TRIGGER_DEFAULT 100 // (100 mV) if none is set
+#define TRIGGER_DEFAULT 15 // Minimum Gauss required for activity
+#define HIGH_BATTERY_MV 5000
+#define DEAD_BATTERY_MV 1900
 
 // Macros
 #define STATE2CASE(VAR, STATE) case STATE: VAR = #STATE; break;
@@ -127,10 +129,11 @@ typedef struct nodeInfo_s {
     byte port_id; // servo node_id is mapped to
     word servo_min; // minimum limit of travel in 4096ths of 60hz PWM(?)
     word servo_max; // maximum limit of travel
-    unsigned int receive_count; // number of messages received
-    unsigned int drop_count; // number of missing messages
+    unsigned int receive_count; // number of good messages received since last_heard
+    unsigned long last_msg_count; // sequence number from last message
+    unsigned int drop_count;    // number of missing messages
     unsigned long last_heard; // timestamp last message received
-    byte batteryPercent; // percent battery remaining
+    byte battery_mv; // percent battery remaining
     char node_name[NODENAMEMAX]; // name of the node
 } nodeInfo_t;
 
@@ -163,8 +166,9 @@ typedef struct message_s {
     byte version; // protocol version                           (1 byte)
     byte node_id; // node ID                                    (1 byte)
     unsigned long msg_count; // number of last message received (4 bytes)
-    int batteryMiliVolts; // Battery voltage                    (2 bytes)
-    int peak_current;                                       //  (2 byte)
+    int battery_mv; // Battery voltage                          (2 bytes)
+    int rms_gauss;                                          //  (2 bytes)
+    int rms_adjust; // Quiesce adjustment                   //  (2 bytes)
     int threshold; // activation threshold                      (1 byte)
 } message_t;
 
@@ -186,11 +190,9 @@ struct menuEntry_s {
 
 typedef struct menuEntry_s menuEntry_t;
 
-void makeMessage(message_t *message, int batteryMiliVolts, int peak_current);
-
-void copyMessage(message_t *destination, const message_t *source);
-
-boolean validMessage(const message_t *message);
+boolean validMessage(const message_t *message,
+                     const unsigned long *last_msg_cnt,
+                     byte recv_result);
 
 const unsigned long *timerExpired(const unsigned long *currentTime,
                                   const unsigned long *lastTime,

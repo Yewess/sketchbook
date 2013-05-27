@@ -21,23 +21,21 @@
 #include <Arduino.h>
 #include <RoboVac.h>
 
-void makeMessage(message_t *message, int batteryMiliVolts, int peak_current) {
-    message->magic = MESSAGEMAGIC;
-    message->version = MESSAGEVERSION;
-    message->msg_count = message->msg_count + 1;
-    message->batteryMiliVolts = batteryMiliVolts;
-    message->peak_current = peak_current;
-}
-
-boolean validMessage(const message_t *message) {
-    if (     (message->magic == MESSAGEMAGIC) &&
+boolean validMessage(const message_t *message,
+                     const unsigned long *last_msg_cnt,
+                     byte recv_result) {
+    if (     (recv_result == sizeof(message_t)) &&
+             (message->magic == MESSAGEMAGIC) &&
              (message->version == MESSAGEVERSION) &&
-             (message->node_id > 0) &&
+             (message->node_id >= 0) &&
              (message->node_id < 255) &&
-             (message->batteryMiliVolts <= 5000) &&
-             (message->batteryMiliVolts >= 1800) &&
-             (message->msg_count > 1) && // ignore first message
-             (message->threshold > TRIGGER_DEFAULT)) {
+             (message->battery_mv <= HIGH_BATTERY_MV) &&
+             (message->battery_mv >= DEAD_BATTERY_MV) &&
+             (message->msg_count != *last_msg_cnt) &&
+             (message->msg_count >= 6) &&
+             (message->threshold >= TRIGGER_DEFAULT) &&
+             ( (message->rms_gauss >= message->threshold) ||
+               (message->rms_gauss < 0) )) {
         return true;
     } else {
         return false;
