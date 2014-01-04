@@ -1,5 +1,17 @@
 // i2c lcd control
 // by Chris Evich
+// License: LGPL v2
+
+/*
+ * From http://dsscircuits.com/articles/arduino-i2c-slave-guide.html
+ *
+ * i2c "Register" get/set model, register types:
+ *     Status – read-only device status (useful for interrupts)
+ *     Data – read-only data that you are looking to collect from your device.
+ *     Mode – r/w "Runtime" operational type, single-shot, continuous, sleep, etc.
+ *     Configuration – r/w "Runtime" configuration, baud rate, sample range, etc.
+ *     Identification – read-only, store some type of ID or firmware revisions
+*/
 
 #include <LiquidCrystal.h>
 #include <Wire.h>
@@ -81,17 +93,17 @@ void requestEvent() {
 // function that executes whenever data is received from master
 // this function is registered as an event, see setup()
 void receiveEvent(int howMany) {
+    i2c_lcd_busy = true;
     i2c_call = (i2clcd_e) Wire.read(); // receive command byte
     i2c_data_count = 0;
     memset(i2c_buffer, 0, lcd_size);
     while(Wire.available()) // loop through remaining data
     {
+        char newData = Wire.read();
         i2c_data_count++;
-        if (i2c_data_count > lcd_size)
-            break; // discard extra data
-        i2c_buffer[i2c_data_count - 1] = Wire.read();
+        if (i2c_data_count < lcd_size)
+            i2c_buffer[i2c_data_count - 1] = newData;
     }
-    i2c_lcd_busy = true;
 }
 
 void process_message() {
