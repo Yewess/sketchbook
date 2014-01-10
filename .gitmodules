@@ -4,6 +4,3 @@
 [submodule "libraries/Adafruit_PWMServoDriver"]
 	path = libraries/Adafruit_PWMServoDriver
 	url = git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
-[submodule "libraries/Arduino_LCD_Menu"]
-	path = libraries/Arduino_LCD_Menu
-	url = git://github.com/DavidAndrews/Arduino_LCD_Menu.git
