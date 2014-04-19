@@ -4,3 +4,6 @@
 [submodule "libraries/Adafruit_PWMServoDriver"]
 	path = libraries/Adafruit_PWMServoDriver
 	url = git://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library.git
+[submodule "libraries/external/yewess"]
+	path = libraries/external/yewess
+	url = https://github.com/Yewess/cxx.git
