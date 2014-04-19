@@ -1,3 +1,88 @@
+/**********************************************************************
+ Notes:
+
+Interface:
+    one-button, hold on power-up to reset EEPROM
+    On button press, run following display sets 3 times
+
+Displays:
+    * #1 == remote sense, #2 = nearby sense
+    * Most recent 10mSMA for #1, #2, and difference
+    * Most recent 60mSMA for #1, #2 and difference
+    * Graph of #1 60mSMA over past 20-hour period
+    * Graph of #2 60mSMA over past 20-hour period
+    * Graph of diff between #1 & #2 over past 20-hour period
+    * backlight:
+        * "Up" blink if current 1-hour #1 temp > last 1-hour temp
+              ****     ****     ****
+             *****    *****    *****
+            ******   ******   ******
+           *******  *******  *******
+           |--|--|--|  repeat once per categoty
+            1s 8s 1s
+        * "Down" blink if current 1-hour #1 temp < last 1-hour temp
+          ****     ****     ****
+          *****    *****    *****
+          ******   ******   ******
+          *******  *******  *******
+        * Different 'display' after every 3 blinks.
+Non-display:
+    * Sleep for 8s (8000ms)
+    * measure temp for 1s (1000ms)
+    * misc. calc for 1s   (1000ms)
+
+Data:
+0) measure temp every 10 seconds -> 10-minute SMA (120 readings)
+1) measure temp every 10 minutes -> 1-hour SMA (120 readings)
+2) every hour, save last 20-hours hours
+
+Memory requirements for data:
+2x "live" readings: 2-bytes each == 4 bytes
+2x set of 10mSMA == 256 bytes
+2x set of 60mSMA == 256 bytes
+2x set of 24h    ==  96 bytes
+
+Power:
+
+35-45 mA ~= 40 hours w/ AA source
+   10 mA ~= 175 hours w/ AA source
+
+----------------------------------------------------
+
+Measuring 4xAA battery:
+
+z1 = 400k ohm
+z2 = 1m ohm
+
+>>> def vdiv(vin, z1, z2):
+...     return vin * (z2 / (z1 + z2))
+
+Max ~= 7.0 volts
+
+>>> print vdiv(7.0, 400000.0, 1000000.0)
+5.0
+
+>>> print vdiv(4.5, 400000.0, 1000000.0)
+3.21428571429
+
+setup() {
+    connect vout to analog pin
+    connect z2 through OUTPUT gpio pin }
+    set gpio HIGH (source)
+
+check_battery() {
+    set gpio LOW (sink)
+    read analog pin
+    set gpio HIGH (source)
+    # map read value (0 and 1023)
+    volts = map(red, 0, 1023, 5000, 0)
+    battery full = 5000
+    battery empty = 3214
+    battert percent = map(volts, 3214, 5000, 0, 100)
+    return battert percent
+}
+**********************************************************************/
+
 #include <stdlib.h>
 #include <LiquidCrystal.h>
 #include <OneWire.h>
