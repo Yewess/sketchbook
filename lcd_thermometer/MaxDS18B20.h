@@ -1,0 +1,1 @@
+../libraries/external/yewess/MaxDS18B20/include/MaxDS18B20.h
