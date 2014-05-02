@@ -12,7 +12,7 @@ typedef class LCD {
 
     public:
     // Write data here
-    static char *lcdWork;
+    char *lcdWork;
 
     // Constructors
     LCD(uint8_t rs, uint8_t enable,

@@ -92,7 +92,6 @@ check_battery() {
 **********************************************************************/
 
 #include <stdlib.h>
-#include <avr/pgmspace.h>
 #include <LiquidCrystal.h>
 #include <OneWire.h>
 #include "MaxDS18B20.h"
@@ -106,10 +105,57 @@ check_battery() {
  *  Public Member Functions
  */
 
+Data::Data(void)
+           :
+           owb_local(PIN_OWB_LOCAL),
+           owb_remote(PIN_OWB_REMOTE),
+           sma_local_s(SMA_POINTS_S),
+           sma_local_l(SMA_POINTS_L),
+           sma_remote_s(SMA_POINTS_S),
+           sma_remote_l(SMA_POINTS_L),
+           lcd(PIN_LCD_RS, PIN_LCD_EN,
+               PIN_LCD_DA0, PIN_LCD_DA1,
+               PIN_LCD_DA2, PIN_LCD_DA3,
+               PIN_LCD_DA4, PIN_LCD_DA5,
+               PIN_LCD_DA6, PIN_LCD_DA7),
+           lcdBlState(sizeof(LcdBlState) / sizeof(LcdBlState::on),
+                      LcdBlState::on),
+           lcdDispState(sizeof(LcdDispState) / sizeof(LcdDispState::local_now),
+                        LcdDispState::local_now),
+           lcdBlVal(255) {
+    #ifdef DEBUG
+    Serial.begin(115200);
+    DL(F("Initializing..."));
+    #endif // DEBUG
+    D(F("Setting PIN_STATUS_LED ")); D(PIN_STATUS_LED); DL(F(" to OUTPUT"));
+    pinMode(PIN_STATUS_LED, OUTPUT);
+
+    DL(F("Setting up sensor devices..."));
+    init_max(owb_local, rom_local, max_local_p);
+    init_max(owb_remote, rom_remote, max_remote_p);
+
+    // setup time
+    DL(F("Setting timer"));
+    current_time = millis();
+}
+
 inline void Data::setup(void) {
     DL(F("Reading initial temperatures..."));
     start_conversion(data.rom_local, data.max_local_p);
     start_conversion(data.rom_remote, data.max_remote_p);
+
+    // Conversion takes a while, do other stuff while it runs
+    DL(F("Initializing LCD..."));
+    lcd.begin(LCD_COLS, LCD_ROWS);
+
+    DL(F("Setting up backlight state machine..."));
+    lcdBlState.define(LcdBlState::up, lcdbl_up);
+    lcdBlState.define(LcdBlState::on, lcdbl_on);
+    lcdBlState.define(LcdBlState::down, lcdbl_down);
+    lcdBlState.define(LcdBlState::off, lcdbl_off);
+    DL(F("Setting up LCD display state machine..."));
+
+    // Wait on conversion, setup starting SMA values
     DL(F("Setting first local short SMA..."));
     sma_append(data.sma_local_s,
                data.rom_local,
@@ -129,41 +175,11 @@ inline void Data::setup(void) {
 }
 
 inline void Data::loop(void) {
-
 }
-
 
 /*
  *  Private Member Functions
  */
-
-Data::Data(void)
-           :
-           owb_local(PIN_OWB_LOCAL),
-           owb_remote(PIN_OWB_REMOTE),
-           sma_local_s(SMA_POINTS_S),
-           sma_local_l(SMA_POINTS_L),
-           sma_remote_s(SMA_POINTS_S),
-           sma_remote_l(SMA_POINTS_L),
-           lcd(PIN_LCD_RS, PIN_LCD_EN,
-               PIN_LCD_DA0, PIN_LCD_DA1,
-               PIN_LCD_DA2, PIN_LCD_DA3,
-               PIN_LCD_DA4, PIN_LCD_DA5,
-               PIN_LCD_DA6, PIN_LCD_DA7) {
-    #ifdef DEBUG
-    Serial.begin(115200);
-    DL(F("Initializing..."));
-    #endif // DEBUG
-    D(F("Setting PIN_STATUS_LED ")); D(data.PIN_STATUS_LED); DL(F(" to OUTPUT"));
-    pinMode(data.PIN_STATUS_LED, OUTPUT);
-
-    DL(F("Setting up sensor devices..."));
-    init_max(owb_local, rom_local, max_local_p);
-    init_max(owb_remote, rom_remote, max_remote_p);
-    // setup time
-    DL(F("Setting timer"));
-    current_time = millis();
-}
 
 void Data::init_max(OneWire& owb,
                     MaxDS18B20::MaxRom& rom,
@@ -203,6 +219,8 @@ inline void Data::wait_conversion(MaxDS18B20::MaxRom& rom,
 
 inline int16_t Data::get_temp(MaxDS18B20::MaxRom& rom,
                               MaxDS18B20*& max_pr) const {
+    if (!max_pr->conversionDone())
+        wait_conversion(rom, max_pr);
     D(F("Reading memory from device: ")); rom.serial_print();
     if (max_pr->readMem())
         D(F("Temperature: ")); D(max_pr->getTempC()); DL(F("°C"));
@@ -211,14 +229,57 @@ inline int16_t Data::get_temp(MaxDS18B20::MaxRom& rom,
     return FAULTTEMP;
 }
 
-inline void Data::sma_append(SimpleMovingAvg& sma,
-                             MaxDS18B20::MaxRom& rom,
-                             MaxDS18B20*& max_pr) const {
+inline int16_t Data::sma_append(SimpleMovingAvg& sma,
+                                MaxDS18B20::MaxRom& rom,
+                                MaxDS18B20*& max_pr) const {
     int16_t temp = get_temp(rom, max_pr);
     if (temp != FAULTTEMP)
-        sma.append(get_temp(rom, max_pr));
+        return sma.append(get_temp(rom, max_pr));
     else
         DL(F("Not recording faulty temperature!"));
+        return FAULTTEMP;
+}
+
+// Regular functions
+
+void lcdbl_up_ef(const TimedEvent* timed_event) {
+    // prevent overflow
+    if (data.lcdBlVal < 239)
+        data.lcdBlVal += 16;
+    else
+        data.lcdBlVal = 255;
+}
+
+void lcdbl_down_ef(const TimedEvent* timed_event) {
+    // prevent underflow
+    if (data.lcdBlVal > 17)
+        data.lcdBlVal -= 16;
+    else
+        data.lcdBlVal = 0;
+}
+
+void lcdbl_up(StateMachine* state_machine) {
+    static TimedEvent lcdbl_up_te(data.current_time, 1000 / 16, lcdbl_up_ef);
+    if (data.lcdBlVal < 255)
+        lcdbl_up_te.update();
+    analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
+}
+
+void lcdbl_on(StateMachine* state_machine) {
+    data.lcdBlVal = 255;
+    analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
+}
+
+void lcdbl_down(StateMachine* state_machine) {
+    static TimedEvent lcdbl_down_te(data.current_time, 1000 / 16, lcdbl_down_ef);
+    if (data.lcdBlVal > 0)
+        lcdbl_down_te.update();
+    analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
+}
+
+void lcdbl_off(StateMachine* state_machine) {
+    data.lcdBlVal = 0;
+    analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
 }
 
 void setup(void) {
