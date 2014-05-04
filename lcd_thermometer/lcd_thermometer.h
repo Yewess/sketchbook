@@ -38,7 +38,14 @@ struct Data {
         static const uint8_t local_24hSMA = diff_60mSMA + 1;
         static const uint8_t remote_24hSMA = local_24hSMA + 1;
         static const uint8_t diff_24hSMA = remote_24hSMA + 1;
+        static const uint8_t snooze = diff_24hSMA + 1;
     } LcdDispState;
+
+    typedef struct DispEHEState {
+        static const uint8_t enter = 0;
+        static const uint8_t hold = enter + 1;
+        static const uint8_t exit = hold + 1;
+    } DispEHEState;
 
     // LCD Interface
     static const uint8_t PIN_LCD_RS = A0;
@@ -73,6 +80,7 @@ struct Data {
     static const Millis TEMP_SMA_WINDOW_L   = 86400000; // 24 hour SMA (long)
     static const Millis SMA_POINTS_S = (TEMP_SMA_WINDOW_S / TEMP_SAMPLE_INTVL);
     static const Millis SMA_POINTS_L = (TEMP_SMA_WINDOW_L / TEMP_SMA_WINDOW_S);
+    const Millis LCD_BL_RAMP_INTERVAL = 1000 / 16;  // 16 updates/second
 
     // Data Members
     OneWire owb_local;
@@ -87,13 +95,19 @@ struct Data {
 
     Millis current_time;
 
+    int16_t now_local;
+    int16_t now_remote;
     SimpleMovingAvg sma_local_s;
     SimpleMovingAvg sma_local_l;
     SimpleMovingAvg sma_remote_s;
     SimpleMovingAvg sma_remote_l;
 
     StateMachine lcdBlState;
+    TimedEvent lcdBlStateTimer;
     StateMachine lcdDispState;
+
+    uint8_t dispCount;
+    uint8_t dispEHEState;
 
     uint8_t lcdBlVal;
 
@@ -108,8 +122,7 @@ struct Data {
     void start_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const ;
     void wait_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;
     int16_t get_temp(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;
-    int16_t sma_append(SimpleMovingAvg& sma, MaxDS18B20::MaxRom& rom,
-                       MaxDS18B20*& max_pr) const;
+    int16_t sma_append(SimpleMovingAvg& sma, uint16_t temp);
 } data;
 
 #endif // LCD_THERMOMETER_H

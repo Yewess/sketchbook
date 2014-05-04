@@ -109,6 +109,8 @@ Data::Data(void)
            :
            owb_local(PIN_OWB_LOCAL),
            owb_remote(PIN_OWB_REMOTE),
+           now_local(FAULTTEMP),
+           now_remote(FAULTTEMP),
            sma_local_s(SMA_POINTS_S),
            sma_local_l(SMA_POINTS_L),
            sma_remote_s(SMA_POINTS_S),
@@ -122,6 +124,8 @@ Data::Data(void)
                       LcdBlState::on),
            lcdDispState(sizeof(LcdDispState) / sizeof(LcdDispState::local_now),
                         LcdDispState::local_now),
+           lcdBlStateTimer(current_time, LCD_BL_RAMP_INTERVAL, lcdbl_up_f),
+           dispEHEState(DispEHEState::enter),
            lcdBlVal(255) {
     #ifdef DEBUG
     Serial.begin(115200);
@@ -153,28 +157,36 @@ inline void Data::setup(void) {
     lcdBlState.define(LcdBlState::on, lcdbl_on);
     lcdBlState.define(LcdBlState::down, lcdbl_down);
     lcdBlState.define(LcdBlState::off, lcdbl_off);
+
     DL(F("Setting up LCD display state machine..."));
+    lcdDispState.define(LcdDispState::local_now, disp_local_now);
+    lcdDispState.define(LcdDispState::diff_now, disp_diff_now);
+    lcdDispState.define(LcdDispState::local_60mSMA, disp_local_60mSMA);
+    lcdDispState.define(LcdDispState::remote_60mSMA, disp_remote_60mSMA);
+    lcdDispState.define(LcdDispState::diff_60mSMA, disp_diff_60mSMA);
+    lcdDispState.define(LcdDispState::local_24hSMA, disp_local_24hSMA);
+    lcdDispState.define(LcdDispState::remote_24hSMA, disp_remote_24hSMA);
+    lcdDispState.define(LcdDispState::diff_24hSMA, disp_diff_24hSMA);
+    lcdDispState.define(LcdDispState::snooze, disp_snooze);
 
     // Wait on conversion, setup starting SMA values
+    DL(F("Setting up local temp..."));
+    now_local = get_temp(rom_local, max_local_p);
+    DL(F("Setting up remote temp..."));
+    now_remote = get_temp(rom_remote, max_remote_p);
     DL(F("Setting first local short SMA..."));
-    sma_append(data.sma_local_s,
-               data.rom_local,
-               data.max_local_p);
+    sma_append(data.sma_local_s, now_local);
     DL(F("Setting first local long SMA..."));
-    sma_append(data.sma_local_l,
-               data.rom_local,
-               data.max_local_p);
+    sma_append(data.sma_local_l, now_local);
     DL(F("Setting first remote short SMA..."));
-    sma_append(data.sma_remote_s,
-               data.rom_remote,
-               data.max_remote_p);
+    sma_append(data.sma_remote_s, now_remote);
     DL(F("Setting first remote long SMA..."));
-    sma_append(data.sma_remote_s,
-               data.rom_remote,
-               data.max_remote_p);
+    sma_append(data.sma_remote_s, now_remote);
 }
 
 inline void Data::loop(void) {
+    current_time = millis();
+    lcdDispState.service();
 }
 
 /*
@@ -186,7 +198,8 @@ void Data::init_max(OneWire& owb,
                     MaxDS18B20*& max_pr) const {
     while (true) {
         if (MaxDS18B20::getMaxROM(owb, rom, 0)) {
-            max_pr = new MaxDS18B20(owb, rom);
+            if (max_pr == NULL)
+                max_pr = new MaxDS18B20(owb, rom);
             max_pr->setResolution(MAXRES);
             if (!max_pr->writeMem())
                 DL(F("Error: Device setup failed!"));
@@ -230,11 +243,9 @@ inline int16_t Data::get_temp(MaxDS18B20::MaxRom& rom,
 }
 
 inline int16_t Data::sma_append(SimpleMovingAvg& sma,
-                                MaxDS18B20::MaxRom& rom,
-                                MaxDS18B20*& max_pr) const {
-    int16_t temp = get_temp(rom, max_pr);
+                                uint16_t temp) {
     if (temp != FAULTTEMP)
-        return sma.append(get_temp(rom, max_pr));
+        return sma.append(temp);
     else
         DL(F("Not recording faulty temperature!"));
         return FAULTTEMP;
@@ -242,7 +253,78 @@ inline int16_t Data::sma_append(SimpleMovingAvg& sma,
 
 // Regular functions
 
-void lcdbl_up_ef(const TimedEvent* timed_event) {
+// LCD content stuff
+
+void disp_local_now(StateMachine* state_machine) {
+    // write data on display
+    switch (data.dispEHEState) {
+        case Data::DispEHEState::enter:
+        // if ramp up
+            // if done ramp up
+                // dispEHEState = DispEHEState::hold
+            // else
+                // setup or do ramp up
+            break;
+        case Data::DispEHEState::hold:
+            // if done holding
+                // dispEHEState = DispEHEState::exit
+            // else
+                // setup or do hold
+            break;
+        case Data::DispEHEState::exit:
+            // if ramp down
+                // if done ramp down
+                    // dispEHEState = DispEHEState::enter
+                    // lcdDispState.next()
+                // else
+                    // setup or do ramp down
+            break;
+    }
+}
+
+void disp_diff_now(StateMachine* state_machine) {
+}
+
+void disp_local_60mSMA(StateMachine* state_machine) {
+}
+
+void disp_remote_60mSMA(StateMachine* state_machine) {
+}
+
+void disp_diff_60mSMA(StateMachine* state_machine) {
+}
+
+void disp_local_24hSMA(StateMachine* state_machine) {
+}
+
+void disp_remote_24hSMA(StateMachine* state_machine) {
+}
+
+void disp_diff_24hSMA(StateMachine* state_machine) {
+}
+
+void disp_snooze(StateMachine* state_machine) {
+    switch (data.dispEHEState) {
+        case Data::DispEHEState::enter:
+            // dispEHEState = DispEHEState::hold
+            // go to sleep
+            break;
+        case Data::DispEHEState::hold:
+            // if done converting
+                // read temperature
+                // handle sma's
+                // dispEHEState = DispEHEState::exit
+            break;
+        case Data::DispEHEState::exit:
+            // dispEHEState = DispEHEState::enter
+            // lcdDispState.setCurrentId(LcdDispState::uint8_t);
+            break;
+    }
+}
+
+// backlight stuff
+
+void lcdbl_up_f(const TimedEvent* timed_event) {
     // prevent overflow
     if (data.lcdBlVal < 239)
         data.lcdBlVal += 16;
@@ -250,7 +332,7 @@ void lcdbl_up_ef(const TimedEvent* timed_event) {
         data.lcdBlVal = 255;
 }
 
-void lcdbl_down_ef(const TimedEvent* timed_event) {
+void lcdbl_down_f(const TimedEvent* timed_event) {
     // prevent underflow
     if (data.lcdBlVal > 17)
         data.lcdBlVal -= 16;
@@ -259,9 +341,9 @@ void lcdbl_down_ef(const TimedEvent* timed_event) {
 }
 
 void lcdbl_up(StateMachine* state_machine) {
-    static TimedEvent lcdbl_up_te(data.current_time, 1000 / 16, lcdbl_up_ef);
+    data.lcdBlStateTimer.reInitIfNot(lcdbl_up_f);
     if (data.lcdBlVal < 255)
-        lcdbl_up_te.update();
+        data.lcdBlStateTimer.update();
     analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
 }
 
@@ -271,9 +353,9 @@ void lcdbl_on(StateMachine* state_machine) {
 }
 
 void lcdbl_down(StateMachine* state_machine) {
-    static TimedEvent lcdbl_down_te(data.current_time, 1000 / 16, lcdbl_down_ef);
+    data.lcdBlStateTimer.reInitIfNot(lcdbl_down_f);
     if (data.lcdBlVal > 0)
-        lcdbl_down_te.update();
+        data.lcdBlStateTimer.update();
     analogWrite(Data::PIN_LCD_BL, data.lcdBlVal);
 }
 
