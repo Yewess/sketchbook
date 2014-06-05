@@ -42,26 +42,25 @@ struct Data {
         static const uint8_t off = 5;
     } LcdBlState;
 
+    // Peripheral Power
+    static const uint8_t PIN_PERIPH_POWER = A0;
+
     // LCD Interface
-    static const uint8_t PIN_LCD_RS = A0;
-    static const uint8_t PIN_LCD_EN = A1;
-    static const uint8_t PIN_LCD_DA0 = A2;
-    static const uint8_t PIN_LCD_DA1 = A3;
-    static const uint8_t PIN_LCD_DA2 = 4;
-    static const uint8_t PIN_LCD_DA3 = 5; // funky pwm
-    static const uint8_t PIN_LCD_DA4 = 6; // funky pwm
-    static const uint8_t PIN_LCD_DA5 = 7;
-    static const uint8_t PIN_LCD_DA6 = 8;
-    static const uint8_t PIN_LCD_DA7 = 12;
-    static const uint8_t PIN_LCD_BL = 3; // pwm
+    static const uint8_t PIN_LCD_RS = A1;
+    static const uint8_t PIN_LCD_EN = A2;
+    static const uint8_t PIN_LCD_DA4 = 5;
+    static const uint8_t PIN_LCD_DA5 = 6;
+    static const uint8_t PIN_LCD_DA6 = 7;
+    static const uint8_t PIN_LCD_DA7 = 8;
+    static const uint8_t PIN_LCD_BL = 9; // pwm
 
     // LCD Details
-    static const uint8_t LCD_COLS = 20;
+    static const uint8_t LCD_COLS = 16;
     static const uint8_t LCD_ROWS = 2;
 
     // One Wire Bus
-    static const uint8_t PIN_OWB_LOCAL = A4; // i2c SDA
-    static const uint8_t PIN_OWB_REMOTE = A5; // i2c SCL
+    static const uint8_t PIN_OWB_LOCAL = 11;
+    static const uint8_t PIN_OWB_REMOTE = 10;
     static const uint8_t MAXRES = 10;
     static const int16_t FAULTTEMP = 12345;
 
@@ -69,10 +68,9 @@ struct Data {
     static const uint8_t PIN_STATUS_LED = 13;
 
     // Timing data
+    static const uint16_t SLEEP_MSEC        = 8000; // 8 seconds
+    static const uint8_t SLEEP_CYCLES       = 75; // 10 minutes
     static const Millis LCD_UPDATE_INTERVAL = 1000; // < 1000ms is unreadable
-
-    static const Millis TEMP_UPD_INTERVAL = 10; // shorter than conversion time
-                                            //60 * 10 * 1000
     static const Millis TEMP_SAMPLE_INTVL   = 600000; // 10 minutes (in ms)
     static const Millis TEMP_SMA_WINDOW_S   = 3600000; // 1 hour SMA (short)
     static const Millis TEMP_SMA_WINDOW_L   = 14400000; // 4 hour SMA (long)
@@ -87,11 +85,14 @@ struct Data {
     // Durations, in ramp-div updates (ticks) for each stage
     static const uint16_t LCD_BL_RAMP_TICKS = 20;  // 1-second in ticks
     static const uint16_t LCD_BL_EQ_TICKS = 10; //  .5-seconds in ticks
-    static const uint16_t LCD_BL_ON_TICKS = 400;  // 8-seconds in ticks
+    static const uint16_t LCD_BL_ON_TICKS = 160;  // 8-seconds in ticks
     static const uint16_t LCD_BL_OFF_TICKS = 0;  // zero-time
 
     // max value for dispCycles
     static const uint8_t MAX_DISPLAY_CYCLES = 3;  // now, one, four...before snooze
+    // Temperature unit
+    static const bool CELSIUS = false;
+    static const char DEGREE_CHAR = 223;
 
     // OneWire bus and sensors
     OneWire owb_local;
@@ -107,12 +108,12 @@ struct Data {
 
     // master clock
     Millis current_time;
+    Millis sleepAdvance; // timer does not count during sleep
+    volatile uint8_t sleepCycleCounter;
 
     // Temperature readings
     int16_t now_local;
     int16_t now_remote;
-    TimedEvent short_smas;
-    TimedEvent long_smas;
     SimpleMovingAvg sma_local_s;
     SimpleMovingAvg sma_local_l;
     SimpleMovingAvg sma_remote_s;
@@ -124,7 +125,7 @@ struct Data {
 
     // serviced by dispState, transitions in lcdBlState
     StateMachine transState;  // inner-display state (enter, hold, exit, next)
-    uint8_t last_updown;  // Cache during dispState cycle
+    uint8_t lcdblStateCache;  // Cache during dispState cycle
 
     // serviced by transState, transitions in lcdBLStateTimer
     StateMachine lcdBlState;    // backlight state (ramp up, ramp-down, hold-on, hold-off)
@@ -135,11 +136,13 @@ struct Data {
 
 
     // Member Functions
+    void init_max(OneWire& owb, MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const;
+    void all_pins_up(void);
+    void all_pins_down(void) const;
     // Constructor
     Data(void);
     void setup(void);
     void loop(void);
-    void init_max(OneWire& owb, MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const;
     void start_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const ;
     void wait_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;
     int16_t get_temp(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;

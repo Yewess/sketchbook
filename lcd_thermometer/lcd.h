@@ -30,14 +30,14 @@ typedef class LCD {
                       d4, d5, d6, d7) {}
 
     LCD(uint8_t rs, uint8_t rw, uint8_t enable,
-        uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3)
+        uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7)
         :
-        liquidCrystal(rs, rw, enable, d0, d1, d2, d3) {}
+        liquidCrystal(rs, rw, enable, d4, d5, d6, d7) {}
 
     LCD(uint8_t rs, uint8_t enable,
-        uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3)
+        uint8_t d4, uint8_t d5, uint8_t d6, uint8_t d7)
         :
-        liquidCrystal(rs, enable, d0, d1, d2, d3) {}
+        liquidCrystal(rs, enable, d4, d5, d6, d7) {}
 
     // Initializer
     void begin(uint8_t cols, uint8_t rows, uint8_t charsize = LCD_5x8DOTS) {
