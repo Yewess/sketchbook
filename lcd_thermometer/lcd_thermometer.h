@@ -8,39 +8,40 @@
 //#define NODEBUG
 #ifndef NODEBUG
     #define DEBUG
-#endif
-
-#ifdef DEBUG
-    #define D(...) Serial.print(__VA_ARGS__)
-    #define DL(...) Serial.println(__VA_ARGS__)
+    #define D(WHAT) Serial.print(WHAT)
+    #define DL(WHAT) Serial.println(WHAT)
 #else
-    #define D(...) if (false)
-    #define DL(...) if (false)
-#endif // DEBUG
+    #define D(WHAT) if (false)
+    #define DL(WHAT) if (false)
+#endif // NODEBUG
 
 struct Data {
-    // types
-
-     static const struct DispState {
+    static const struct DispState {
         static const uint8_t now = 0;
         static const uint8_t one = 1;
         static const uint8_t four = 2;
         static const uint8_t snooze = 3;
     } DispState;
 
-     static const struct TransState {
+    static const struct TransState {
         static const uint8_t enter = 0;
         static const uint8_t hold = 1;
         static const uint8_t exit = 2;
     } TransState;
 
-     static const struct LcdBlState {
+    static const struct LcdBlState {
         static const uint8_t up = 0;
         static const uint8_t down = 2;
         static const uint8_t equal = 3;
         static const uint8_t on = 4;
         static const uint8_t off = 5;
     } LcdBlState;
+
+    #ifdef DEBUG
+    static const uint8_t PIN_SERIAL_RX = 0;
+    static const uint8_t PIN_SERIAL_TX = 1;
+    static const uint32_t SERIAL_BAUD = 115200;
+    #endif // DEBUG
 
     // Peripheral Power
     static const uint8_t PIN_PERIPH_POWER = A0;
@@ -68,8 +69,9 @@ struct Data {
     static const uint8_t PIN_STATUS_LED = 13;
 
     // Timing data
-    static const uint16_t SLEEP_MSEC        = 8000; // 8 seconds
-    static const uint8_t SLEEP_CYCLES       = 75; // 10 minutes
+    static const uint16_t WDT8SEC           = 8000 + -215; // 8 sec avg WDT osc time
+    static const uint32_t SLEEPTIME         = 600000; // 10 minutes
+    static const uint8_t SLEEP_CYCLES       = SLEEPTIME / WDT8SEC;
     static const Millis LCD_UPDATE_INTERVAL = 1000; // < 1000ms is unreadable
     static const Millis TEMP_SAMPLE_INTVL   = 600000; // 10 minutes (in ms)
     static const Millis TEMP_SMA_WINDOW_S   = 3600000; // 1 hour SMA (short)
@@ -102,13 +104,12 @@ struct Data {
     MaxDS18B20* max_local_p;
     MaxDS18B20* max_remote_p;
 
-    // lcd double-buffer
-    LCD lcd;
     uint8_t lcdBlVal;  // PWM value to set (0-255)
+    LiquidCrystal lcd;
 
     // master clock
     Millis current_time;
-    Millis sleepAdvance; // timer does not count during sleep
+    uint32_t sleepAdvance; // total sleepCycleCounter
     volatile uint8_t sleepCycleCounter;
 
     // Temperature readings
@@ -134,15 +135,13 @@ struct Data {
     TimedEvent lcdBlStateTimer; // transition timer for lcdBlState
     uint16_t lcdblTicks;  // nr lcdBlStateTimer fires
 
-
     // Member Functions
-    void init_max(OneWire& owb, MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const;
-    void all_pins_up(void);
-    void all_pins_down(void) const;
-    // Constructor
     Data(void);
     void setup(void);
     void loop(void);
+    void init_max(OneWire& owb, MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const;
+    void all_pins_up(void);
+    void all_pins_down(void);
     void start_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr) const ;
     void wait_conversion(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;
     int16_t get_temp(MaxDS18B20::MaxRom& rom, MaxDS18B20*& max_pr)const ;

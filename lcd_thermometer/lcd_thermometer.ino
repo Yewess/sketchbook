@@ -98,7 +98,6 @@ check_battery() {
 #include "MovingAvg.h"
 #include "TimedEvent.h"
 #include "StateMachine.h"
-#include "lcd.h"
 #include "lcd_thermometer.h"
 
 /*
@@ -131,6 +130,20 @@ Data::Data(void)
            sleepCycleCounter(0),
            sleepAdvance(0),
            lcdBlVal(255) { // no flicker @ start
+    // timing critical
+    noInterrupts();
+    // Clear the reset flag.
+    MCUSR &= ~(1<<WDRF);
+    // In order to change WDE or the prescaler, we need to
+    // set WDCE (This will allow updates for 4 clock cycles).
+    WDTCSR |= (1<<WDCE) | (1<<WDE);
+    // set new watchdog timeout prescaler value
+    WDTCSR = (1<<WDP0) | (1<<WDP3); // 8.0 seconds
+    // Enable the WD interrupt (note no reset).
+    WDTCSR |= _BV(WDIE);
+    interrupts();
+
+    all_pins_up();
     DL(F("Initializing..."));
 
     D(F("Short SMA points: ")); D(SMA_POINTS_S);
@@ -144,22 +157,6 @@ Data::Data(void)
 
     D(F("LCD equal ticks: ")); D(LCD_BL_EQ_TICKS);
     D(F(" LCD on ticks: ")); DL(LCD_BL_ON_TICKS);
-
-    DL(F("Setting up WDT sleep mode..."));
-    /* Clear the reset flag. */
-    MCUSR &= ~_BV(WDRF);
-    /* In order to change WDE or the prescaler, we need to
-     * set WDCE (This will allow updates for 4 clock cycles).
-     */
-    WDTCSR |= _BV(WDCE) | _BV(WDE);
-    /* set new watchdog timeout prescaler value */
-    WDTCSR = _BV(WDP0) | _BV(WDP3); /* 8.0 seconds */
-    /* Enable the WD interrupt (note no reset). */
-    WDTCSR |= _BV(WDIE);
-    // Maximum power savings
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
-
-    all_pins_up();
 }
 
 void Data::init_max(OneWire& owb,
@@ -236,6 +233,15 @@ inline int16_t Data::sma_append(SimpleMovingAvg& sma,
 
 void Data::all_pins_up(void){
     power_all_enable();
+
+    #ifdef DEBUG
+        pinMode(PIN_SERIAL_RX, INPUT);
+        pinMode(PIN_SERIAL_TX, OUTPUT);
+        delay(100);
+        Serial.begin(SERIAL_BAUD);
+        DL(">>>DEBUG ENABLED<<<");
+    #endif // DEBUG
+
     D(F("Setup LCD pins:"));
     D(F(" RS- ")); D(PIN_LCD_RS);
     pinMode(PIN_LCD_RS, OUTPUT);
@@ -252,11 +258,11 @@ void Data::all_pins_up(void){
 
     D(F("Setting LCD Backlight pin (PWM) to output: ")); DL(PIN_LCD_BL);
     pinMode(PIN_LCD_BL, OUTPUT);
-    digitalWrite(PIN_LCD_BL, LOW);
+    analogWrite(PIN_LCD_BL, 0);  // PWM off
 
     D(F("Setting status LED pin to output: ")); DL(PIN_STATUS_LED);
     pinMode(PIN_STATUS_LED, OUTPUT);
-    digitalWrite(PIN_STATUS_LED, LOW);
+    analogWrite(PIN_STATUS_LED, 0);  // PWM off
 
     D(F("Setting local OneWire bus pin to output: ")); DL(PIN_OWB_LOCAL);
     pinMode(PIN_OWB_LOCAL, OUTPUT);
@@ -266,27 +272,62 @@ void Data::all_pins_up(void){
 
     D(F("Powering up peripherals on pin: ")); DL(PIN_PERIPH_POWER);
     pinMode(PIN_PERIPH_POWER, OUTPUT);
+    pinMode(PIN_PERIPH_POWER, HIGH);
+    // Devices need power-on time to settle
+    delay(100);
 
-    DL(F("Setting up sensor devices..."));
+    DL(F("Initializing LCD"));
+    lcd.begin(LCD_COLS, LCD_ROWS);
+    lcd.noDisplay();
+    lcd.clear();
+
+    DL(F("Setting up local sensor"));
+    // These will do inf. loop until sensor is present, give feedback
+    lcd.setCursor(0,0);
+    lcd.print(F("Connect local   "));
+    lcd.setCursor(0,1);
+    lcd.print(F("temp. temp sens."));
+    lcd.display();
     init_max(owb_local, rom_local, max_local_p);
+    lcd.noDisplay();
+    lcd.setCursor(9,1);
+    lcd.print(F("remote  "));
+    lcd.display();
     init_max(owb_remote, rom_remote, max_remote_p);
+    // feedback that remote sensor connected
+    lcd.noDisplay();
+    lcd.clear();
 
-    DL(F("Setting timer"));
-    current_time = millis();
-
+    current_time = sleepAdvance * WDT8SEC + millis();
+    D(F("Setting timer (+advance): "));
+    D(current_time);
+    D(F(" ("));
+    D(sleepAdvance * WDT8SEC);
+    DL(F(")"));
 }
 
-void Data::all_pins_down(void) const {
-    D(F("Taking all pins to ground"));
+void Data::all_pins_down(void) {
+    DL(F("Going to sleep"));
+    lcd.noDisplay();
+    lcd.clear();
+    lcd.print(F("Going to sleep"));
+    lcd.setCursor(0,1);
+    lcd.print(SLEEPTIME / 1000);
+    lcd.print(F(" seconds"));
+    lcd.display();
+    #ifdef DEBUG
+    Serial.flush();
+    Serial.end();
+    #endif // DEBUG
+    delay(500);  // time to read message
+
     // Make sure everything is turned off first!
-    digitalWrite(PIN_PERIPH_POWER, HIGH);
-    for (uint8_t pin=1; pin < 13; pin++) {
+    digitalWrite(PIN_PERIPH_POWER, LOW);
+    for (uint8_t pin=0; pin < 13; pin++) {
         digitalWrite(pin, LOW);
-        pinMode(pin, INPUT);
     }
-    for (uint8_t pin=A0; pin < A5; pin++) {
+    for (uint8_t pin=A1; pin < A5; pin++) {
         digitalWrite(pin, LOW);
-        pinMode(pin, INPUT);
     }
     power_all_disable();
 }
@@ -295,11 +336,13 @@ inline void Data::setup(void) {
     DL(F("Computing initial temperatures..."));
     start_conversion(rom_local, max_local_p);
     start_conversion(rom_remote, max_remote_p);
+    lcd.setCursor(0,0);
+    lcd.print("Collecting initl");
+    lcd.setCursor(0,1);
+    lcd.print("temp. data");
+    lcd.display();
 
     // Conversion takes a while, do other stuff while it runs
-    DL(F("Initializing LCD..."));
-    lcd.begin(LCD_COLS, LCD_ROWS);
-
     DL(F("Setting up Data display state machine..."));
     dispState.define(DispState.now, now_f);
     dispState.define(DispState.one, one_f);
@@ -318,6 +361,9 @@ inline void Data::setup(void) {
     lcdBlState.define(LcdBlState.equal, lcdbl_state_equal_f);
     lcdBlState.define(LcdBlState.off, lcdbl_state_off_f);
 
+    // Time to print / read
+    delay(500);
+
     DL(F("Waiting for conversion to finish..."));
     wait_conversion(rom_local, max_local_p);
     wait_conversion(rom_remote, max_remote_p);
@@ -334,9 +380,9 @@ inline void Data::setup(void) {
 }
 
 inline void Data::loop(void) {
-    current_time = millis() + (sleepAdvance * 100);
+    current_time = sleepAdvance * WDT8SEC + millis();
     temp_update();  // now_local & now_remote
-    current_time = millis() + (sleepAdvance * 100);
+    current_time = sleepAdvance * WDT8SEC + millis();
     dispState.service(); // and all lower nested-states
 }
 
@@ -401,12 +447,11 @@ void choose_updown(void) {  // ONCE per display change
 
 void disp_header(PGM_P header_p) {
     char c = pgm_read_byte(header_p);
-    uint8_t offset = 0;
     for (; c != 0; c = pgm_read_byte(header_p++))
-        data.lcd.lcdWork[offset++] = c;
+         data.lcd.print(c);
 }
 
-void disp_temp(uint16_t temp, uint8_t offset) {
+void disp_temp(uint16_t temp) {
     const uint8_t ibuff_len = 6;
     char ibuff[ibuff_len] = {0};
     int16_t dig = temp / 100;
@@ -421,14 +466,13 @@ void disp_temp(uint16_t temp, uint8_t offset) {
     itoa(dig, ibuff, 10);
     uint8_t len = strnlen(ibuff, ibuff_len);
     for (uint8_t i=0; i < len; i++)
-        data.lcd.lcdWork[offset + i] = ibuff[i];
+        data.lcd.print(ibuff);
     // only room for 3 digits + 1 decimal
-    data.lcd.lcdWork[offset + len] = '.';
-    itoa(tenths, ibuff, 10);
-    data.lcd.lcdWork[offset + len + 1] = ibuff[0]; // guaranteed only tenths
+    data.lcd.print('.');
+    data.lcd.print(ibuff);
 }
 
-void disp_diff(uint16_t local, uint16_t remote, uint8_t offset) {
+void disp_diff(uint16_t local, uint16_t remote) {
     const uint8_t ibuff_len = 6;
     char ibuff[ibuff_len] = {0};
     int16_t diff = remote - local;
@@ -444,19 +488,19 @@ void disp_diff(uint16_t local, uint16_t remote, uint8_t offset) {
     itoa(abs(dig), ibuff, 10);
     uint8_t len = strnlen(ibuff, ibuff_len);
     if (dig > 0)
-        data.lcd.lcdWork[offset] = '+';
+        data.lcd.print('+');
     else
-        data.lcd.lcdWork[offset] = '-';
+        data.lcd.print('-');
     for (uint8_t i=0; i < len; i++)
-        data.lcd.lcdWork[offset + i + 1] = ibuff[i];
+        data.lcd.print(ibuff);
 }
 
-void disp_unit(uint8_t offset) {
-    data.lcd.lcdWork[offset] = Data::DEGREE_CHAR; // degree character
+void disp_unit() {
+    data.lcd.print(Data::DEGREE_CHAR);
     if (data.CELSIUS)
-        data.lcd.lcdWork[offset + 1] = 'C';
+        data.lcd.print('C');
     else
-        data.lcd.lcdWork[offset + 1] = 'F';
+        data.lcd.print('F');
 }
 
 void now_f(StateMachine* state_machine) {
@@ -465,11 +509,18 @@ void now_f(StateMachine* state_machine) {
       000.0 000.0 +000
     */
     // copy header
+    data.lcd.noDisplay();
+    data.lcd.clear();
     disp_header(PSTR("Now L R CF  Diff"));
-    disp_temp(data.now_local, Data::LCD_COLS);
-    disp_unit(8);
-    disp_temp(data.now_remote, Data::LCD_COLS + 6);
-    disp_diff(data.now_local, data.now_remote, Data::LCD_COLS + 12);
+    data.lcd.setCursor(8,0);
+    disp_unit();
+    data.lcd.setCursor(0,1);
+    disp_temp(data.now_local);
+    data.lcd.print(' ');
+    disp_temp(data.now_remote);
+    data.lcd.print(' ');
+    disp_diff(data.now_local, data.now_remote);
+    data.lcd.display();
     // service state
     data.transState.service();
 }
@@ -481,11 +532,18 @@ void one_f(StateMachine* state_machine) {
     */
     const int16_t sma_local = data.sma_remote_s.value();
     const int16_t sma_remote = data.sma_remote_s.value();
+    data.lcd.noDisplay();
+    data.lcd.clear();
     disp_header(PSTR("1hA L R CF  Diff"));
-    disp_temp(sma_local, Data::LCD_COLS);
-    disp_unit(8);
-    disp_temp(sma_remote, Data::LCD_COLS + 6);
-    disp_diff(data.now_local, data.now_remote, Data::LCD_COLS + 12);
+    data.lcd.setCursor(8,0);
+    disp_unit();
+    data.lcd.setCursor(0,1);
+    disp_temp(sma_local);
+    data.lcd.print(' ');
+    disp_temp(sma_remote);
+    data.lcd.print(' ');
+    disp_diff(data.now_local, data.now_remote);
+    data.lcd.display();
     // service state
     data.transState.service();
 }
@@ -497,11 +555,18 @@ void four_f(StateMachine* state_machine) {
     */
     const int16_t sma_local = data.sma_remote_l.value();
     const int16_t sma_remote = data.sma_remote_l.value();
+    data.lcd.noDisplay();
+    data.lcd.clear();
     disp_header(PSTR("4hA L R CF  Diff"));
-    disp_temp(sma_local, Data::LCD_COLS);
-    disp_unit(8);
-    disp_temp(sma_remote, Data::LCD_COLS + 6);
-    disp_diff(data.now_local, data.now_remote, Data::LCD_COLS + 12);
+    data.lcd.setCursor(8,0);
+    disp_unit();
+    data.lcd.setCursor(0,1);
+    disp_temp(sma_local);
+    data.lcd.print(' ');
+    disp_temp(sma_remote);
+    data.lcd.print(' ');
+    disp_diff(data.now_local, data.now_remote);
+    data.lcd.display();
     // service state
     data.transState.service();
 }
@@ -509,24 +574,23 @@ void four_f(StateMachine* state_machine) {
 void snooze_f(StateMachine* state_machine) {
     D(F("Snoozing..."));
     data.all_pins_down();
-    Millis sleepduration = millis();
     // ISR increments data.sleepCycleCounter on wakeup
     for (data.sleepCycleCounter=0; data.sleepCycleCounter < Data::SLEEP_CYCLES;) {
-        sleep_enable(); // ZZzzzzzzzz
-        sleep_disable(); // Woke up
+        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+        sleep_enable();
+        sleep_mode(); // ZZzzzzzzzz
+        sleep_disable(); // Woke up, disable ISR
+        data.sleepAdvance += data.WDT8SEC;
     }
-    sleepduration = millis() - sleepduration;
     data.all_pins_up();
-    D(F("...Woke up, sleep (duration ")); D(sleepduration); DL(F("ms)"));
-    // seconds to add to current_time
-    // Batteries will die before this overflows
-    data.sleepAdvance += (sleepduration / 100);
-    D(F("Sleep duration: ")); DL(sleepduration);
+    D(F("...Woke up"));
     // Gather initial data
+    // Take a while, use time initializing LCD
     data.start_conversion(data.rom_local, data.max_local_p);
     data.start_conversion(data.rom_remote, data.max_remote_p);
-    // Take a while, use time initializing LCD
     data.lcd.begin(Data::LCD_COLS, Data::LCD_ROWS);
+    data.lcd.clear();
+    data.lcd.print("Waking up...");
     DL(F("Gathering post-snooze temp. readings"));
     data.wait_conversion(data.rom_local, data.max_local_p);
     data.wait_conversion(data.rom_remote, data.max_remote_p);
@@ -549,6 +613,7 @@ void snooze_f(StateMachine* state_machine) {
     data.sma_append(data.sma_local_l, data.now_local);
     DL(F("Updating remote long SMA..."));
     data.sma_append(data.sma_remote_l, data.now_remote);
+    delay(500);  // time to print / read;
 }
 
 /////////////////////// transState servicer
@@ -621,6 +686,7 @@ void lcdbl_state_helper(uint16_t lcdblTicks_end,
             data.transState.next();  // wraps to beginning if end
     }
     analogWrite(data.PIN_LCD_BL, data.lcdBlVal);
+    analogWrite(data.PIN_STATUS_LED, data.lcdBlVal);
 }
 
 void lcdbl_state_up_f(StateMachine* state_machine) {
@@ -708,12 +774,9 @@ ISR(WDT_vect)
 }
 
 void setup(void) {
-    #ifdef DEBUG
-    Serial.begin(115200);
-    DL("Setting up...");
-    #endif // DEBUG
+    Data data;
     data.setup();
-    DL("Looping...");
+    DL(F("Looping..."));
 }
 
 void loop(void) {
