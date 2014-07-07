@@ -9,6 +9,39 @@
 #include "TimedEvent.h"
 #include "StateMachine.h"
 
+/*
+Theory of operation:
+
+Every ~8-seconds, WDT wakes up device:
+    * Power up OWB A & B
+    * Setup max18b20's
+        * If none found:
+            * Turn on LCD
+            * LCD write "connect max18b20"
+            * Repeat for each OWB
+    * Begin temperature conversion
+    * If button is pressed:
+        * Switch on status LED, wait for button release
+        * Turn on LCD
+        * LCD write "measuring temperature"
+        * Set UI flag
+    * else:
+        * Switch on status LED
+    * Wait remainder of time for temperature conversion
+    * Read temperature
+    * Update SMA's if necessary
+    * Switch off status LED
+    * If UI flag not set:
+        * Go back to sleep
+    * else:
+        * Show display indicated by encoder value
+        * If 1-min goes by w/o encoder change
+            * Go back to sleep
+        * If button pressed:
+            * Go back to sleep
+        * Repeat above
+*/
+
 //#define NODEBUG
 #ifndef NODEBUG
     #define DEBUG
@@ -47,7 +80,22 @@ static const uint32_t SERIAL_BAUD = 115200;
 #endif // DEBUG
 
 // Peripheral Power
-static const uint8_t PIN_PERIPH_POWER = A0;
+static const uint8_t PIN_LCD_MOSFET = 12;
+static const uint8_t PIN_ARF_MOSFET = A3;
+
+// One Wire Bus
+static const uint8_t PIN_OWB_A = 11;
+static const uint8_t PIN_OWB_B = 10;
+
+// IIC
+static const uint8_t PIN_IIC_SCL = A5;
+static const uint8_t PIN_IIC_SDA = A4;
+
+// Battery Sense.
+static const uint8_t PIN_BAT_SENSE = A0;
+
+// Status indicator
+static const uint8_t PIN_STATUS_LED = 13;
 
 // LCD Interface
 static const uint8_t PIN_LCD_RS = A1;
@@ -63,16 +111,11 @@ static const uint8_t LCD_COLS = 16;
 static const uint8_t LCD_ROWS = 2;
 
 // One Wire Bus
-static const uint8_t PIN_OWB_LOCAL = 11;
-static const uint8_t PIN_OWB_REMOTE = 10;
 static const uint8_t MAXRES = 10;
 static const int16_t FAULTTEMP = 12345;
 
-// Doing "work" indicator
-static const uint8_t PIN_STATUS_LED = 13;
-
 // Timing data
-static const uint16_t WDT8SEC           = 8000 + -215; // 8 sec avg WDT osc time
+static const uint16_t WDT8SEC           = 7806; // 8 sec avg WDT osc time
 static const uint32_t SLEEPTIME         = 600000; // 10 minutes
 static const uint8_t SLEEP_CYCLES       = SLEEPTIME / WDT8SEC;
 static const Millis LCD_UPDATE_INTERVAL = 1000; // < 1000ms is unreadable
@@ -100,12 +143,12 @@ static const bool CELSIUS = false;
 static const char DEGREE_CHAR = 223;
 
 // OneWire bus and sensors
-OneWire owb_local(PIN_OWB_LOCAL);
-OneWire owb_remote(PIN_OWB_REMOTE);
+OneWire owb_local(PIN_OWB_A); // local
+OneWire owb_remote(PIN_OWB_B); // remote
 MaxDS18B20::MaxRom rom_local;
 MaxDS18B20::MaxRom rom_remote;
-MaxDS18B20* max_local_p;
-MaxDS18B20* max_remote_p;
+MaxDS18B20 max_local(owb_local, rom_local);
+MaxDS18B20 max_remote(owb_remote, rom_remote);
 
 uint8_t lcdBlVal = 0;  // PWM value to set (0-255)
 LiquidCrystal lcd(PIN_LCD_RS, PIN_LCD_EN,
@@ -151,13 +194,13 @@ ISR(WDT_vect)
 
 void init_max(OneWire& owb,
               MaxDS18B20::MaxRom& rom,
-              MaxDS18B20*& max_pr) {
+              MaxDS18B20& max) {
     while (true) {
         if (MaxDS18B20::getMaxROM(owb, rom, 0)) {
-            if (max_pr == NULL)
-                max_pr = new MaxDS18B20(owb, rom);
-            max_pr->setResolution(MAXRES);
-            if (!max_pr->writeMem())
+            DL("Found device");
+            max.setResolution(MAXRES);
+            DL("Set resolution");
+            if (!max.writeMem())
                 DL(F("Error: Device setup failed!"));
             else {
                 D("Setup device: "); rom.serial_print();
@@ -170,17 +213,17 @@ void init_max(OneWire& owb,
 }
 
 inline void start_conversion(MaxDS18B20::MaxRom& rom,
-                             MaxDS18B20*& max_pr) {
+                             MaxDS18B20& max) {
     D(F("Starting conversion on: ")); rom.serial_print();
-    if (!max_pr->startConversion())
+    if (!max.startConversion())
         DL(F("Error: Device disappeared!"));
 }
 
 inline void wait_conversion(MaxDS18B20::MaxRom& rom,
-                            MaxDS18B20*& max_pr) {
+                            MaxDS18B20& max) {
     D(F("Waiting for conversion on: ")); rom.serial_print();
     D(F("."));
-    while (!max_pr->conversionDone()) {
+    while (!max.conversionDone()) {
         digitalWrite(PIN_STATUS_LED,
                      !digitalRead(PIN_STATUS_LED));
         D(F("."));
@@ -190,20 +233,20 @@ inline void wait_conversion(MaxDS18B20::MaxRom& rom,
 }
 
 inline int16_t get_temp(MaxDS18B20::MaxRom& rom,
-                        MaxDS18B20*& max_pr) {
-    if (!max_pr->conversionDone())
-        wait_conversion(rom, max_pr);
+                        MaxDS18B20& max) {
+    if (!max.conversionDone())
+        wait_conversion(rom, max);
     digitalWrite(PIN_STATUS_LED, HIGH);
     D(F("Reading memory from device: ")); rom.serial_print();
-    if (max_pr->readMem()) {
+    if (max.readMem()) {
         if (CELSIUS) {
-            D(F("Temperature: ")); D(max_pr->getTempC()); DL(F("°C"));
+            D(F("Temperature: ")); D(max.getTempC()); DL(F("°C"));
             digitalWrite(PIN_STATUS_LED, LOW);
-            return max_pr->getTempC();
+            return max.getTempC();
         } else {
-            D(F("Temperature: ")); D(max_pr->getTempF()); DL(F("°F"));
+            D(F("Temperature: ")); D(max.getTempF()); DL(F("°F"));
             digitalWrite(PIN_STATUS_LED, LOW);
-            return max_pr->getTempF();
+            return max.getTempF();
         }
     }
     DL(F("Error reading memory!"));
@@ -232,6 +275,10 @@ void all_pins_up(void){
         DL(">>>DEBUG ENABLED<<<");
     #endif // DEBUG
 
+    D(F("Setting status LED pin to output: ")); DL(PIN_STATUS_LED);
+    pinMode(PIN_STATUS_LED, OUTPUT);
+    digitalWrite(PIN_STATUS_LED, HIGH);
+
     D(F("Setup LCD pins:"));
     D(F(" RS- ")); D(PIN_LCD_RS);
     pinMode(PIN_LCD_RS, OUTPUT);
@@ -250,43 +297,32 @@ void all_pins_up(void){
     pinMode(PIN_LCD_BL, OUTPUT);
     analogWrite(PIN_LCD_BL, 0);  // PWM off
 
-    D(F("Setting status LED pin to output: ")); DL(PIN_STATUS_LED);
-    pinMode(PIN_STATUS_LED, OUTPUT);
-    analogWrite(PIN_STATUS_LED, 0);  // PWM off
+    D(F("Setting OneWire bus A pin to input: ")); DL(PIN_OWB_A);
+    pinMode(PIN_OWB_A, INPUT);
 
-    D(F("Setting local OneWire bus pin to output: ")); DL(PIN_OWB_LOCAL);
-    pinMode(PIN_OWB_LOCAL, OUTPUT);
+    D(F("Setting OneWire bus B pin to input: ")); DL(PIN_OWB_B);
+    pinMode(PIN_OWB_B, INPUT);
 
-    D(F("Setting remote OneWire bus pin to output: ")); DL(PIN_OWB_REMOTE);
-    pinMode(PIN_OWB_REMOTE, OUTPUT);
-
-    D(F("Powering up peripherals on pin: ")); DL(PIN_PERIPH_POWER);
-    pinMode(PIN_PERIPH_POWER, OUTPUT);
-    pinMode(PIN_PERIPH_POWER, HIGH);
+    D(F("Powering up peripherals on pin: ")); DL(PIN_LCD_MOSFET);
+    D(F("Powering up peripherals on pin: ")); DL(PIN_ARF_MOSFET);
+    pinMode(PIN_LCD_MOSFET, OUTPUT);
+    pinMode(PIN_ARF_MOSFET, OUTPUT);
+    pinMode(PIN_LCD_MOSFET, HIGH);
+    pinMode(PIN_ARF_MOSFET, HIGH);
     // Devices need power-on time to settle
     delay(100);
+
+    digitalWrite(PIN_STATUS_LED, LOW);
 
     DL(F("Initializing LCD"));
     lcd.begin(LCD_COLS, LCD_ROWS);
     lcd.noDisplay();
     lcd.clear();
 
-    DL(F("Setting up local sensor"));
+    DL(F("Setting up A sensor"));
     // These will do inf. loop until sensor is present, give feedback
-    lcd.setCursor(0,0);
-    lcd.print(F("Connect local   "));
-    lcd.setCursor(0,1);
-    lcd.print(F("temp. temp sens."));
-    lcd.display();
-    init_max(owb_local, rom_local, max_local_p);
-    lcd.noDisplay();
-    lcd.setCursor(9,1);
-    lcd.print(F("remote  "));
-    lcd.display();
-    init_max(owb_remote, rom_remote, max_remote_p);
-    // feedback that remote sensor connected
-    lcd.noDisplay();
-    lcd.clear();
+    init_max(owb_local, rom_local, max_local);
+    init_max(owb_remote, rom_remote, max_remote);
 
     current_time = sleepAdvance * WDT8SEC + millis();
     D(F("Setting timer (+advance): "));
@@ -300,23 +336,22 @@ void all_pins_down(void) {
     DL(F("Going to sleep"));
     lcd.noDisplay();
     lcd.clear();
+    #ifdef DEBUG
     lcd.print(F("Going to sleep"));
     lcd.setCursor(0,1);
     lcd.print(SLEEPTIME / 1000);
     lcd.print(F(" seconds"));
     lcd.display();
-    #ifdef DEBUG
     Serial.flush();
     Serial.end();
-    #endif // DEBUG
     delay(500);  // time to read message
+    #endif // DEBUG
 
-    // Make sure everything is turned off first!
-    digitalWrite(PIN_PERIPH_POWER, LOW);
-    for (uint8_t pin=0; pin < 13; pin++) {
-        digitalWrite(pin, LOW);
-    }
-    for (uint8_t pin=A1; pin < A5; pin++) {
+    // Make sure these turn off first!
+    digitalWrite(PIN_LCD_MOSFET, LOW);
+    digitalWrite(PIN_ARF_MOSFET, LOW);
+    for (uint8_t pin=0; pin < 18; pin++) {
+        pinMode(pin, OUTPUT);
         digitalWrite(pin, LOW);
     }
     power_all_disable();
@@ -326,15 +361,15 @@ void all_pins_down(void) {
 /////////////////////// temp measurement
 
 void temp_update(void) {
-    if (max_local_p->conversionDone()) {
+    if (max_local.conversionDone()) {
         D(F("Updating local reading..."));
-        now_local = get_temp(rom_local, max_local_p);
-        start_conversion(rom_local, max_local_p);
+        now_local = get_temp(rom_local, max_local);
+        start_conversion(rom_local, max_local);
     }
-    if (max_remote_p->conversionDone()) {
+    if (max_remote.conversionDone()) {
         D(F("Updating remote reading..."));
-        now_remote = get_temp(rom_remote, max_remote_p);
-        start_conversion(rom_remote, max_remote_p);
+        now_remote = get_temp(rom_remote, max_remote);
+        start_conversion(rom_remote, max_remote);
     }
 }
 
@@ -523,14 +558,14 @@ void snooze_f(StateMachine* state_machine) {
     D(F("...Woke up"));
     // Gather initial data
     // Take a while, use time initializing LCD
-    start_conversion(rom_local, max_local_p);
-    start_conversion(rom_remote, max_remote_p);
+    start_conversion(rom_local, max_local);
+    start_conversion(rom_remote, max_remote);
     lcd.begin(LCD_COLS, LCD_ROWS);
     lcd.clear();
     lcd.print("Waking up...");
     DL(F("Gathering post-snooze temp. readings"));
-    wait_conversion(rom_local, max_local_p);
-    wait_conversion(rom_remote, max_remote_p);
+    wait_conversion(rom_local, max_local);
+    wait_conversion(rom_remote, max_remote);
     temp_update();  // and start next conversion
     choose_updown(); // set up lcdBlState
     transState.setCurrentId(TransState::enter);
@@ -713,7 +748,7 @@ void setup(void) {
     // set WDCE (This will allow updates for 4 clock cycles).
     WDTCSR |= (1<<WDCE) | (1<<WDE);
     // set new watchdog timeout prescaler value
-    WDTCSR = (1<<WDP0) | (1<<WDP3); // 8.0 seconds
+    WDTCSR = WDTO_8S;
     // Enable the WD interrupt (note no reset).
     WDTCSR |= _BV(WDIE);
     interrupts();
@@ -733,8 +768,8 @@ void setup(void) {
     D(F("LCD equal ticks: ")); D(LCD_BL_EQ_TICKS);
     D(F(" LCD on ticks: ")); DL(LCD_BL_ON_TICKS);
     DL(F("Computing initial temperatures..."));
-    start_conversion(rom_local, max_local_p);
-    start_conversion(rom_remote, max_remote_p);
+    start_conversion(rom_local, max_local);
+    start_conversion(rom_remote, max_remote);
     lcd.setCursor(0,0);
     lcd.print("Collecting initl");
     lcd.setCursor(0,1);
@@ -764,16 +799,16 @@ void setup(void) {
     delay(500);
 
     DL(F("Waiting for conversion to finish..."));
-    wait_conversion(rom_local, max_local_p);
-    wait_conversion(rom_remote, max_remote_p);
+    wait_conversion(rom_local, max_local);
+    wait_conversion(rom_remote, max_remote);
 
     DL(F("Setting up local temp..."));
-    now_local = get_temp(rom_local, max_local_p);
+    now_local = get_temp(rom_local, max_local);
     sma_append(sma_local_s, now_local);
     sma_append(sma_local_l, now_local);
 
     DL(F("Setting up remote temp..."));
-    now_remote = get_temp(rom_remote, max_remote_p);
+    now_remote = get_temp(rom_remote, max_remote);
     sma_append(sma_remote_s, now_remote);
     sma_append(sma_remote_l, now_remote);
     DL(F("Looping..."));
