@@ -7,3 +7,6 @@
 [submodule "libraries/external/yewess"]
 	path = libraries/external/yewess
 	url = https://github.com/Yewess/cxx.git
+[submodule "Button"]
+	path = libraries/external/Button
+	url = https://github.com/virgildisgr4ce/Button.git
