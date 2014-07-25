@@ -33,8 +33,8 @@ uint8_t start_conversion(OneWire& owb) {
     if ((buff[0] != 0x10) && (buff[0] != 0x28) && (buff[0] != 0x22))
         return OwbStatus::notDs18x20;
     owb.select(buff);
+
     owb.write(0x44, 1); // Start conversion
-    //DL(F("...started"));
     return OwbStatus::converting;
 }
 
@@ -50,13 +50,14 @@ uint8_t get_temp(OneWire& owb, int16_t& x10degrees, bool celsius) {
     x10degrees = Owb::checkStatus;
     //DL(F("Reading temperature"));
     owb.reset_search();
-    uint8_t buff[9];
-    uint8_t present = owb.search(buff);
+    uint8_t romBuff[8] = {0};
+    uint8_t ramBuff[9] = {0};
+    uint8_t present = owb.search(romBuff);
     //D(1);
     if (!present)
         return OwbStatus::notFound;
     //D(2);
-    if (OneWire::crc8(buff, 7) != buff[7])
+    if (OneWire::crc8(romBuff, 7) != romBuff[7])
         return OwbStatus::romBadCrc;
     present = owb.reset();  // prepare for next command
     //D(3);
@@ -64,28 +65,41 @@ uint8_t get_temp(OneWire& owb, int16_t& x10degrees, bool celsius) {
         return OwbStatus::busError;
     //D(4);
     bool type_s = false;
-    if (buff[0] == 0x10)
+    if (romBuff[0] == 0x10)
         type_s = true;
-    else if ((buff[0] == 0x28) || (buff[0] == 0x22))
+    else if ((romBuff[0] == 0x28) || (romBuff[0] == 0x22))
         type_s = false;
     else
         return OwbStatus::notDs18x20;
     //D(5);
-    owb.select(buff);
+    owb.select(romBuff);
     owb.write(0xBE, 1);    // Read Scratchpad
-    owb.read_bytes(buff, 9);
-    if (OneWire::crc8(buff, 8) != buff[8])
+    owb.read_bytes(ramBuff, 9);
+    if (OneWire::crc8(ramBuff, 8) != ramBuff[8])
         return OwbStatus::ramBadCrc;
+    // If resolution < 12, set it and go back to converting while EEProm updates
+    if (!type_s and (((ramBuff[4] & 0x60) >> 5) + 9) != 12) {
+        DL("Setting up 12-bit resolution");
+        ramBuff[2] = 0; ramBuff[3] = 0; ramBuff[4] = (12 - 9) << 5;
+        owb.reset();
+        owb.select(romBuff);
+        owb.write(0x4E, 1);  // write scratchpad
+        owb.write_bytes(ramBuff, 3);
+        owb.reset();
+        owb.select(romBuff);
+        owb.write(0x48);  // save to EEProm
+        return OwbStatus::converting;
+    }
     //D(6);
-    x10degrees = x10degrees = (buff[1] << 8) | buff[0];
+    x10degrees = x10degrees = (ramBuff[1] << 8) | ramBuff[0];
     if (type_s) {
         x10degrees = x10degrees << 3; // 9 bit resolution default
-        if (buff[7] == 0x10)
+        if (ramBuff[7] == 0x10)
             // "count remain" gives full 12 bit resolution
-            x10degrees = (x10degrees & 0xFFF0) + 12 - buff[6];
+            x10degrees = (x10degrees & 0xFFF0) + 12 - ramBuff[6];
     } else {
         // default is 12 bit resolution, 750 ms conversion time
-        uint8_t precision = (buff[4] & 0x60);
+        uint8_t precision = (ramBuff[4] & 0x60);
         // at lower res, the low bits are undefined, zero them
         if (precision == 0x00)
             x10degrees = x10degrees & ~7;  // 9 bit resolution, 93.75 ms
@@ -101,17 +115,6 @@ uint8_t get_temp(OneWire& owb, int16_t& x10degrees, bool celsius) {
         x10degrees = x10degrees / 16 * 18 + 320;  // preserve one decimal place
     return OwbStatus::complete;
 }
-
-uint16_t sma_append(SimpleMovingAvg& sma, uint16_t x10degrees) {
-    if (x10degrees != Owb::checkStatus) {
-        D(F("SMA Appended: ")); DL(x10degrees);
-        return sma.append(x10degrees);
-    } else {
-        DL(F("Not recording faulty temperature!"));
-        return Owb::checkStatus;
-    }
-}
-
 
 void all_pins_up(void){
 
@@ -207,16 +210,6 @@ void all_pins_down(void) {
 }
 
 void sleep(void) {
-    D("OWB A");
-    D(F(" status: ")); D(sma.owbA.status);
-    D(F(" x10 Temp: ")); D(sma.owbA.x10degrees);
-    D(F(" 1hSMA: ")); D(sma.owbA.oneHour.value());
-    D(F(" 4hSMA: ")); DL(sma.owbA.fourHour.value());
-    D("OWB B");
-    D(F(" status: ")); D(sma.owbB.status);
-    D(F(" x10 Temp: ")); D(sma.owbB.x10degrees);
-    D(F(" 1hSMA: ")); D(sma.owbB.oneHour.value());
-    D(F(" 4hSMA: ")); DL(sma.owbB.fourHour.value());
     all_pins_down();
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     power_all_disable();  // switch off all internal devices (PWM, ADC, etc.)
@@ -233,33 +226,172 @@ void update_time(void) {
         currentTime += wdtSleep8;
 }
 
+void updateTemps(void) {
+    if (sma.owbA.status == OwbStatus::converting &&
+        conversion_done(sma.owbA.bus)) {
+        sma.owbA.status = OwbStatus::complete;
+        sma.owbA.status = get_temp(sma.owbA.bus,
+                                   sma.owbA.x10degrees, celsius);
+        sma.owbA.status = start_conversion(sma.owbA.bus);
+    } else
+        sma.owbA.status = start_conversion(sma.owbA.bus);
+    if (sma.owbB.status == OwbStatus::converting &&
+        conversion_done(sma.owbB.bus)) {
+        sma.owbB.status = OwbStatus::complete;
+        sma.owbB.status = get_temp(sma.owbB.bus,
+                                   sma.owbB.x10degrees, celsius);
+        sma.owbB.status = start_conversion(sma.owbB.bus);
+    } else
+        sma.owbB.status = start_conversion(sma.owbB.bus);
+}
+
+void wait_conversion(void) {
+    DL(F("Waiting on A"));
+    while (sma.owbA.status == OwbStatus::converting)
+        if (conversion_done(sma.owbA.bus))
+            break;
+    DL(F("Waiting on B"));
+    while (sma.owbB.status == OwbStatus::converting)
+        if (conversion_done(sma.owbB.bus))
+            break;
+    updateTemps();
+}
+
+uint16_t sma_append(SimpleMovingAvg& sma, uint16_t x10degrees) {
+    if (x10degrees != Owb::checkStatus) {
+        D(F("SMA Appended: ")); DL(x10degrees);
+        return sma.append(x10degrees);
+    } else {
+        DL(F("Not recording faulty temperature!"));
+        return Owb::checkStatus;
+    }
+}
+
 void updateOneHour(TimedEvent* timed_event) {
+    wait_conversion();
     D(F("1H SMA append: ")); D(sma.owbA.x10degrees);
-    D(F(" ")); DL(sma.owbB.x10degrees);
-    if (sma.owbA.x10degrees != Owb::checkStatus)
-        sma.owbA.oneHour.append(sma.owbA.x10degrees);
-    if (sma.owbB.x10degrees != Owb::checkStatus)
-        sma.owbB.oneHour.append(sma.owbB.x10degrees);
+    D(F(" / ")); DL(sma.owbB.x10degrees);
+    sma_append(sma.owbA.oneHour, sma.owbA.x10degrees);
+    sma_append(sma.owbB.oneHour, sma.owbB.x10degrees);
 }
 
 void updateFourHour(TimedEvent* timed_event) {
+    wait_conversion();
     D(F("4H SMA append: ")); D(sma.owbA.x10degrees);
-    D(F(" ")); DL(sma.owbB.x10degrees);
-    if (sma.owbA.x10degrees != Owb::checkStatus)
-        sma.owbA.fourHour.append(sma.owbA.x10degrees);
-    if (sma.owbB.x10degrees != Owb::checkStatus)
-        sma.owbB.fourHour.append(sma.owbB.x10degrees);
+    D(F(" / ")); DL(sma.owbB.x10degrees);
+    sma_append(sma.owbA.fourHour, sma.owbA.x10degrees);
+    sma_append(sma.owbB.fourHour, sma.owbB.x10degrees);
 }
 
 void updateWake(TimedEvent* timed_event) {
-    sleep();
-    DL("");
-    DL("");
-    update_time();
-    timed_event->reset();
-    D(F("Wake up: ")); D(millis());
-    D(F("ms sleep #: ")); D(sleepCycleCounter);
-    D(F(" adjusted Time: ")); D(currentTime); DL(F("ms"));
+    if (wakeCounter <= 0) {
+        lcd.clear();
+        digitalWrite(Pin::lcdBL, LOW);
+        uiActivity = false;
+        lcdDisplay = false;
+        wakeCounter = wakeMinMultiplier;
+        sleep();
+        enc.write(encValue * 4);  // looses brains after wake up
+        DL("");
+        update_time();
+        timed_event->reset();
+        D(F("Wake up: ")); D(millis());
+        D(F("ms sleep #: ")); D(sleepCycleCounter);
+        D(F(" adjusted Time: ")); D(currentTime); DL(F("ms"));
+        // Zap old temperature readings
+        sma.owbA.status = OwbStatus::changeDev;
+        sma.owbB.status = OwbStatus::changeDev;
+        sma.owbA.x10degrees = Owb::checkStatus;
+        sma.owbB.x10degrees = Owb::checkStatus;
+    } else
+        wakeCounter--;
+}
+
+void lcdPrintTemp(int16_t centi_temp) {
+    if (centi_temp >= 0)
+        lcd.print(" ");
+    lcd.print(centi_temp / 10);
+    lcd.print(".");
+    lcd.print(centi_temp - centi_temp / 10 * 10);
+    lcd.print("\xDF"); // degree's symbol
+}
+
+void updateLcd(TimedEvent* timed_event) {
+    D("\nOWB A");
+    D(F(" status: ")); D(sma.owbA.status);
+    D(F(" x10 Temp: ")); D(sma.owbA.x10degrees);
+    D(F(" 1hSMA: ")); D(sma.owbA.oneHour.value());
+    D(F(" 4hSMA: ")); DL(sma.owbA.fourHour.value());
+    D("OWB B");
+    D(F(" status: ")); D(sma.owbB.status);
+    D(F(" x10 Temp: ")); D(sma.owbB.x10degrees);
+    D(F(" 1hSMA: ")); D(sma.owbB.oneHour.value());
+    D(F(" 4hSMA: ")); DL(sma.owbB.fourHour.value());
+    if (!lcdDisplay)
+        return;
+    lcd.setCursor(0, 0);
+    switch (encValue) {
+        case EncState::current: lcd.print("Current Temp.   "); break;
+        case EncState::one:     lcd.print("1 Hour SMA Temp."); break;
+        case EncState::four:    lcd.print("4 Hour SMA Temp."); break;
+    }
+    lcd.setCursor(0, 1);
+    lcd.print("A:      B:      ");
+    lcd.setCursor(2, 1);
+    switch (encValue) {
+        case EncState::current: lcdPrintTemp(sma.owbA.x10degrees); break;
+        case EncState::one: lcdPrintTemp(sma.owbA.oneHour.value()); break;
+        case EncState::four: lcdPrintTemp(sma.owbA.fourHour.value()); break;
+    }
+    lcd.setCursor(10, 1);
+    switch (encValue) {
+        case EncState::current: lcdPrintTemp(sma.owbB.x10degrees); break;
+        case EncState::one: lcdPrintTemp(sma.owbB.oneHour.value()); break;
+        case EncState::four: lcdPrintTemp(sma.owbB.fourHour.value()); break;
+    }
+    digitalWrite(Pin::lcdBL, HIGH);
+}
+
+void updateEnc(TimedEvent* timed_event) {
+    int32_t newPosition = enc.read() / 4;
+
+    if (newPosition > lowByte(encMinMax)) {
+      newPosition = highByte(encMinMax);
+      enc.write(newPosition * 4);
+    } else if (newPosition < highByte(encMinMax)) {
+       newPosition = lowByte(encMinMax);
+       enc.write(newPosition * 4);
+    }
+
+    if (newPosition != encValue) {
+      encValue = newPosition;
+      D(F("Encoder select: ")); DL(encValue);
+      uiActivity = true;
+    }
+}
+
+void pressHandler(Button& source) {
+    DL(F("Button pressed"));
+    buttonState = ButtonState::pressed;
+    uiActivity = true;
+}
+
+void releaseHandler(Button& source) {
+    DL(F("Button Released"));
+    buttonState = ButtonState::released;
+    uiActivity = true;
+}
+
+void clickHandler(Button& source) {
+    DL(F("Button Clicked"));
+    buttonState = ButtonState::click;
+    uiActivity = true;
+}
+
+void holdHandler(Button& source) {
+    D(F("Button Held for: ")); DL(source.holdTime());
+    buttonState = ButtonState::held;
+    uiActivity = true;
 }
 
 void setup(void) {
@@ -279,6 +411,11 @@ void setup(void) {
     all_pins_up();
     DL(F("Setup..."));
 
+    button.pressHandler(pressHandler);
+    button.releaseHandler(releaseHandler);
+    button.clickHandler(clickHandler);
+    button.holdHandler(holdHandler, buttonHoldTime);
+
     while (sma.owbA.status != OwbStatus::converting) {
         //D(F("OWB A status: ")); DL(sma.owbA.status);
         // Timers expect conversion already started
@@ -290,7 +427,13 @@ void setup(void) {
         sma.owbB.status = start_conversion(sma.owbB.bus);
         //D(F("OWB B status: ")); DL(sma.owbB.status);
     }
+    enc.write(0);
     update_time();
+    lcd.clear();
+    digitalWrite(Pin::lcdBL, LOW);
+    D(F("Start: ")); D(millis());
+    D(F("ms sleep #: ")); D(sleepCycleCounter);
+    D(F(" adjusted Time: ")); D(currentTime); DL(F("ms"));
     DL(F("Looping..."));
 }
 
@@ -304,25 +447,27 @@ void loop(void) {
     static TimedEvent wakeUpdate(currentTime,
                                  wakeTime,
                                  updateWake);
-    update_time();
-    if (sma.owbA.status == OwbStatus::converting &&
-        conversion_done(sma.owbA.bus)) {
-        sma.owbA.status = OwbStatus::complete;
-        sma.owbA.status = get_temp(sma.owbA.bus,
-                                   sma.owbA.x10degrees, celsius);
-        sma.owbA.status = start_conversion(sma.owbA.bus);
+    static TimedEvent encUpdate(currentTime,
+                                encTime,
+                                updateEnc);
+    static TimedEvent lcdUpdate(currentTime,
+                                lcdTime,
+                                updateLcd);
+    updateTemps(); update_time();
+    oneHourUpdate.update(); update_time();
+    fourHourUpdate.update(); update_time();
+    button.process(); update_time();
+    encUpdate.update(); update_time();
+    lcdUpdate.update(); update_time();
+    if (uiActivity) {
+        // don't check again, unless button/enc activity
+        uiActivity = false;
+        // Do start displaying stuff now
+        lcdDisplay = true;
+        // clear last round button's status
+        buttonState = ButtonState::none;
+        // delay going to sleep
+        wakeCounter = wakeMaxMultiplier;
     }
-    if (sma.owbB.status == OwbStatus::converting &&
-        conversion_done(sma.owbB.bus)) {
-        sma.owbB.status = OwbStatus::complete;
-        sma.owbB.status = get_temp(sma.owbB.bus,
-                                   sma.owbB.x10degrees, celsius);
-        sma.owbB.status = start_conversion(sma.owbB.bus);
-    }
-    update_time();
-    oneHourUpdate.update();
-    update_time();
-    fourHourUpdate.update();
-    update_time();
     wakeUpdate.update();
 }

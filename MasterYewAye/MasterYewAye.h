@@ -62,6 +62,20 @@ struct OwbStatus {
     static const uint8_t changeDev = 9;
 };
 
+struct ButtonState {
+    static const uint8_t none = 0;
+    static const uint8_t pressed = 1;
+    static const uint8_t released = 2;
+    static const uint8_t click = 4;
+    static const uint8_t held = 5;
+};
+
+struct EncState {
+    static const uint8_t current = 0;
+    static const uint8_t one = 1;
+    static const uint8_t four = 2;
+};
+
 typedef struct Owb {
     static const int16_t checkStatus = -850;
     OneWire bus;
@@ -85,8 +99,9 @@ typedef struct Sma {
 } Sma;
 
 static const uint16_t wdtSleep8 = (Millis)7806; // 8 sec avg WDT osc time
-static const Millis lcdUpdate = (Millis)250; // < 1000ms is unreadable
-static const Millis wakeTime = (Millis)2000;  // stay awake this long
+static const Millis lcdTime = (Millis)250; // < 1000ms is unreadable
+static const Millis wakeTime = (Millis)100;  // update wake counter
+static const Millis encTime = (Millis)10;
 #ifdef DEBUG
     static const Millis tempSmaSample = (Millis)60000; // 1 minute (in ms)
     static const Millis tempSmaOne = (Millis)360000; // 6 minutes SMA (short)
@@ -99,9 +114,18 @@ static const Millis wakeTime = (Millis)2000;  // stay awake this long
 static const uint8_t lcdRows = 2;
 static const uint8_t lcdCols = 16;
 static const bool celsius = false;
-static const char degreeSymb = 223;
+static const int buttonHoldTime = 2000;
+static const int8_t wakeMinMultiplier = 11; // minimum * wakeTime to stay awake
+static const int8_t wakeMaxMultiplier = 100; // maximum * wakeTime to stay awake
 
 // globals
+
+uint16_t encMinMax = 2; // MSB: Min; LSB: Max
+uint8_t encValue = EncState::current;
+uint8_t buttonState = ButtonState::none;
+bool uiActivity = false;
+bool lcdDisplay = false;
+int8_t wakeCounter = wakeMinMultiplier; // stay awake until 0
 
 volatile Millis sleepCycleCounter = 0;
 
@@ -109,6 +133,8 @@ LiquidCrystal lcd(Pin::lcdRS, Pin::lcdEN, Pin::lcdD4,
                   Pin::lcdD5, Pin::lcdD6, Pin::lcdD7);
 
 Encoder enc(Pin::encA, Pin::encC);
+
+Button button(Pin::button, BUTTON_PULLUP);
 
 Sma sma(Pin::owbA, Pin::owbB,
         tempSmaOne / tempSmaSample, tempSmaOne / tempSmaSample,
