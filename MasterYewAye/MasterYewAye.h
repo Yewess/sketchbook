@@ -115,6 +115,7 @@ static const uint8_t lcdRows = 2;
 static const uint8_t lcdCols = 16;
 static const bool celsius = false;
 static const int buttonHoldTime = 2000;
+static const uint8_t sleepCycleMultiplier = 8;
 static const int8_t wakeMinMultiplier = 11; // minimum * wakeTime to stay awake
 static const int8_t wakeMaxMultiplier = 100; // maximum * wakeTime to stay awake
 

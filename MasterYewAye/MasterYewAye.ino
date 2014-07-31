@@ -91,7 +91,7 @@ uint8_t get_temp(OneWire& owb, int16_t& x10degrees, bool celsius) {
         return OwbStatus::converting;
     }
     //D(6);
-    x10degrees = x10degrees = (ramBuff[1] << 8) | ramBuff[0];
+    x10degrees = (ramBuff[1] << 8) | ramBuff[0];
     if (type_s) {
         x10degrees = x10degrees << 3; // 9 bit resolution default
         if (ramBuff[7] == 0x10)
@@ -207,15 +207,28 @@ void all_pins_down(void) {
     pinMode(Pin::lcdD5, INPUT);
     pinMode(Pin::lcdD6, INPUT);
     pinMode(Pin::lcdD7, INPUT);
+    // Need a way to wake up manually
+    pinMode(Pin::button, INPUT_PULLUP);  // TODO: check power use
 }
 
 void sleep(void) {
+    uint8_t sleepCyclesRemaining = sleepCycleMultiplier;
     all_pins_down();
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     power_all_disable();  // switch off all internal devices (PWM, ADC, etc.)
-    sleep_enable(); // Enable ISR
-    sleep_mode(); // ZZzzzzzzzz
-    sleep_disable(); // Woke up, disable ISR
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    cli(); // disable interrupts
+    while (sleepCyclesRemaining) {
+        sleepCyclesRemaining--;
+        sleep_enable(); // Enable ISR
+        sleep_bod_disable(); // Must happen _right_ before sleep_mode();
+        sei(); // enable interrupts
+        sleep_cpu(); // ZZzzzzzzzz
+        sleep_disable(); // Woke up, disable ISR
+        cli(); // disable interrupts
+        if (digitalRead(Pin::button) == LOW)
+            break;
+    }
+    sei();  // enable interrupts
     power_all_enable(); // switch on all internal devices
     all_pins_up();
 }
