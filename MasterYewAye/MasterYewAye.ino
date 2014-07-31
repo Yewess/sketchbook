@@ -11,8 +11,7 @@
 #include <TimedEvent.h>
 #include "MasterYewAye.h"
 
-ISR(WDT_vect)
-{
+ISR(WDT_vect) {
     sleepCycleCounter++;
 }
 
@@ -189,17 +188,18 @@ void all_pins_down(void) {
         delay(10); // flush needs more time
         Serial.end();
     #endif // DEBUG
-    for (uint8_t pin=0; pin < A5; pin++) {
-        if (pin != Pin::battSense) {  // DO NOT SHORT BATTERY TO GROUND
-            pinMode(pin, OUTPUT);
-            digitalWrite(pin, LOW); // discharge to ground
-            delay(1);  // time to discharge
-        }
-    }
+    // batt sense
+    digitalWrite(Pin::arfMosfet, LOW);  // mosfet off
+    pinMode(Pin::arfMosfet, INPUT); // disconnect
+    pinMode(A0, INPUT); // NO SHORT!
     // One-wire bus
+    digitalWrite(Pin::owbMosfet, LOW);  // mosfet
+    pinMode(Pin::owbMosfet, INPUT);
     pinMode(Pin::owbA, INPUT);
     pinMode(Pin::owbB, INPUT);
     // LCD Connections
+    digitalWrite(Pin::lcdMosfet, LOW);  // mosfet off
+    pinMode(Pin::lcdMosfet, INPUT);  // disconnect
     pinMode(Pin::lcdBL, INPUT);
     pinMode(Pin::lcdRS, INPUT);
     pinMode(Pin::lcdEN, INPUT);
@@ -207,8 +207,6 @@ void all_pins_down(void) {
     pinMode(Pin::lcdD5, INPUT);
     pinMode(Pin::lcdD6, INPUT);
     pinMode(Pin::lcdD7, INPUT);
-    // Need a way to wake up manually
-    pinMode(Pin::button, INPUT_PULLUP);  // TODO: check power use
 }
 
 void sleep(void) {
@@ -225,8 +223,6 @@ void sleep(void) {
         sleep_cpu(); // ZZzzzzzzzz
         sleep_disable(); // Woke up, disable ISR
         cli(); // disable interrupts
-        if (digitalRead(Pin::button) == LOW)
-            break;
     }
     sei();  // enable interrupts
     power_all_enable(); // switch on all internal devices
@@ -330,6 +326,7 @@ void lcdPrintTemp(int16_t centi_temp) {
 }
 
 void updateLcd(TimedEvent* timed_event) {
+    #ifdef DEBUG
     D("\nOWB A");
     D(F(" status: ")); D(sma.owbA.status);
     D(F(" x10 Temp: ")); D(sma.owbA.x10degrees);
@@ -340,6 +337,7 @@ void updateLcd(TimedEvent* timed_event) {
     D(F(" x10 Temp: ")); D(sma.owbB.x10degrees);
     D(F(" 1hSMA: ")); D(sma.owbB.oneHour.value());
     D(F(" 4hSMA: ")); DL(sma.owbB.fourHour.value());
+    #endif // DEBUG
     if (!lcdDisplay)
         return;
     lcd.setCursor(0, 0);
@@ -410,6 +408,9 @@ void holdHandler(Button& source) {
 void setup(void) {
     // timing critical
     noInterrupts();
+
+    /* Set up watchdog timer to wake up chip from power-down sleep
+       after (temperature & voltage dependant) "8 seconds"  */
     // Clear the reset flag.
     MCUSR &= ~(1<<WDRF);
     // In order to change WDE or the prescaler, we need to
