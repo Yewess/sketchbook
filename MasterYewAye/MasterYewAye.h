@@ -74,6 +74,7 @@ struct EncState {
     static const uint8_t current = 0;
     static const uint8_t one = 1;
     static const uint8_t four = 2;
+    static const uint8_t twelve = 3;
 };
 
 typedef struct Owb {
@@ -83,9 +84,10 @@ typedef struct Owb {
     int16_t x10degrees;
     SimpleMovingAvg oneHour;
     SimpleMovingAvg fourHour;
-    Owb(uint8_t pin, uint16_t onePoints, uint16_t fourPoints)
+    SimpleMovingAvg twelveHour;
+    Owb(uint8_t pin, uint16_t onePoints, uint16_t fourPoints, uint16_t twelvePoints)
         : bus(pin), x10degrees(checkStatus),
-          oneHour(onePoints), fourHour(fourPoints) {};
+          oneHour(onePoints), fourHour(fourPoints), twelveHour(twelvePoints) {};
 } Owb;
 
 typedef struct Sma {
@@ -93,35 +95,39 @@ typedef struct Sma {
     Owb owbB;
     Sma(uint8_t pinA, uint8_t pinB,
         uint16_t onePointsA, uint16_t onePointsB,
-        uint16_t fourPointsA, uint16_t fourPointsB)
-        : owbA(pinA, onePointsA, fourPointsA),
-          owbB(pinB, onePointsB, fourPointsB) {};
+        uint16_t fourPointsA, uint16_t fourPointsB,
+        uint16_t twelvePointsA, uint16_t twelvePointsB)
+        : owbA(pinA, onePointsA, fourPointsA, twelvePointsA),
+          owbB(pinB, onePointsB, fourPointsB, twelvePointsB) {};
 } Sma;
 
 static const uint16_t wdtSleep8 = (Millis)7806; // 8 sec avg WDT osc time
 static const Millis lcdTime = (Millis)250; // < 1000ms is unreadable
 static const Millis wakeTime = (Millis)100;  // update wake counter
-static const Millis encTime = (Millis)10;
+static const Millis encTime = (Millis)1;
 #ifdef DEBUG
+    static const uint8_t sleepCycleMultiplier = 1;
     static const Millis tempSmaSample = (Millis)60000; // 1 minute (in ms)
-    static const Millis tempSmaOne = (Millis)360000; // 6 minutes SMA (short)
-    static const Millis tempSmaFour = (Millis)1440000; // 24 minute SMA (long)
+    static const Millis tempSmaOne = (Millis)360000; // 6 minutes SMA
+    static const Millis tempSmaFour = (Millis)1440000; // 24 minute SMA
+    static const Millis tempSmaTwelve = (Millis)4320000;  // 1.2 hour SMA
 #else
+    static const uint8_t sleepCycleMultiplier = 8;
     static const Millis tempSmaSample = (Millis)600000; // 10 minutes (in ms)
-    static const Millis tempSmaOne = (Millis)3600000; // 1 hour SMA (short)
-    static const Millis tempSmaFour = (Millis)14400000; // 4 hour SMA (long)
+    static const Millis tempSmaOne = (Millis)3600000; // 1 hour SMA
+    static const Millis tempSmaFour = (Millis)14400000; // 4 hour SMA
+    static const Millis tempSmaTwelve = (Millis)43200000;  // 12 hours SMA
 #endif // DEBUG
 static const uint8_t lcdRows = 2;
 static const uint8_t lcdCols = 16;
 static const bool celsius = false;
-static const int buttonHoldTime = 2000;
-static const uint8_t sleepCycleMultiplier = 8;
-static const int8_t wakeMinMultiplier = 11; // minimum * wakeTime to stay awake
+static const int buttonHoldTime = 1000;
+static const int8_t wakeMinMultiplier = 10; // minimum * wakeTime to stay awake
 static const int8_t wakeMaxMultiplier = 100; // maximum * wakeTime to stay awake
 
 // globals
 
-uint16_t encMinMax = 2; // MSB: Min; LSB: Max
+uint16_t encMinMax = 3; // MSB: Min; LSB: Max
 uint8_t encValue = EncState::current;
 uint8_t buttonState = ButtonState::none;
 bool uiActivity = false;
@@ -139,7 +145,8 @@ Button button(Pin::button, BUTTON_PULLUP);
 
 Sma sma(Pin::owbA, Pin::owbB,
         tempSmaOne / tempSmaSample, tempSmaOne / tempSmaSample,
-        tempSmaFour / tempSmaSample, tempSmaFour / tempSmaSample);
+        tempSmaFour / tempSmaSample, tempSmaFour / tempSmaSample,
+        tempSmaTwelve / tempSmaOne, tempSmaTwelve / tempSmaOne);
 
 Millis currentTime = 0;
 

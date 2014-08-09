@@ -350,6 +350,14 @@ void updateFourHour(TimedEvent* timed_event) {
     sma_append(sma.owbB.fourHour, sma.owbB.x10degrees);
 }
 
+void updateTwelveHour(TimedEvent* timed_event) {
+    wait_conversion();
+    D(F("12H SMA append: ")); D(sma.owbA.x10degrees);
+    D(F(" / ")); DL(sma.owbB.x10degrees);
+    sma_append(sma.owbA.twelveHour, sma.owbA.x10degrees);
+    sma_append(sma.owbB.twelveHour, sma.owbB.x10degrees);
+}
+
 void updateWake(TimedEvent* timed_event) {
     if (wakeCounter <= 0) {
         lcd.clear();
@@ -404,6 +412,7 @@ void updateLcd(TimedEvent* timed_event) {
         case EncState::current: lcd.print("Current Temp.   "); break;
         case EncState::one:     lcd.print("1 Hour SMA Temp."); break;
         case EncState::four:    lcd.print("4 Hour SMA Temp."); break;
+        case EncState::twelve:  lcd.print("12Hour SMA Temp."); break;
     }
     lcd.setCursor(0, 1);
     lcd.print("A:      B:      ");
@@ -412,12 +421,14 @@ void updateLcd(TimedEvent* timed_event) {
         case EncState::current: lcdPrintTemp(sma.owbA.x10degrees); break;
         case EncState::one: lcdPrintTemp(sma.owbA.oneHour.value()); break;
         case EncState::four: lcdPrintTemp(sma.owbA.fourHour.value()); break;
+        case EncState::twelve: lcdPrintTemp(sma.owbA.twelveHour.value()); break;
     }
     lcd.setCursor(10, 1);
     switch (encValue) {
         case EncState::current: lcdPrintTemp(sma.owbB.x10degrees); break;
         case EncState::one: lcdPrintTemp(sma.owbB.oneHour.value()); break;
         case EncState::four: lcdPrintTemp(sma.owbB.fourHour.value()); break;
+        case EncState::twelve: lcdPrintTemp(sma.owbB.twelveHour.value()); break;
     }
     digitalWrite(Pin::lcdBL, HIGH);
 }
@@ -505,11 +516,14 @@ void setup(void) {
 
 void loop(void) {
     static TimedEvent oneHourUpdate(currentTime,
-                                    tempSmaSample,
+                                    tempSmaSample,  // 10 minutes
                                     updateOneHour);
     static TimedEvent fourHourUpdate(currentTime,
                                      tempSmaSample,
                                      updateFourHour);
+    static TimedEvent twelveHourUpdate(currentTime,
+                                       tempSmaOne,  // one hour
+                                       updateTwelveHour);
     static TimedEvent wakeUpdate(currentTime,
                                  wakeTime,
                                  updateWake);
@@ -522,6 +536,7 @@ void loop(void) {
     updateTemps(); update_time();
     oneHourUpdate.update(); update_time();
     fourHourUpdate.update(); update_time();
+    twelveHourUpdate.update(); update_time();
     button.process(); update_time();
     encUpdate.update(); update_time();
     lcdUpdate.update(); update_time();
