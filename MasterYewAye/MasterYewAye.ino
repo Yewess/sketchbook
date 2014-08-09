@@ -115,98 +115,156 @@ uint8_t get_temp(OneWire& owb, int16_t& x10degrees, bool celsius) {
     return OwbStatus::complete;
 }
 
-void all_pins_up(void){
+void owb_power(bool on=true) {
+    static bool alreadyOn = false;
+    if (!on) {  // no harm in turning off twice
+        digitalWrite(Pin::owbMosfet, LOW);  // mosfet
+        pinMode(Pin::owbMosfet, INPUT);
+        pinMode(Pin::owbA, INPUT);
+        pinMode(Pin::owbB, INPUT);
+        alreadyOn = false;
+    } else if (!alreadyOn) {  // turning on twice can cause problms
+        pinMode(Pin::owbA, INPUT); // external pull-up
+        pinMode(Pin::owbB, INPUT); // external pull-up
+        pinMode(Pin::owbMosfet, OUTPUT);
+        digitalWrite(Pin::owbMosfet, HIGH); // low-side mosfet
+        alreadyOn = true;
+    }
+}
 
-    #ifdef DEBUG
-        pinMode(Pin::serialRx, OUTPUT);
-        pinMode(Pin::serialTx, OUTPUT);
-        Serial.begin(Pin::serialBaud);
-        digitalWrite(Pin::serialRx, HIGH);
-        digitalWrite(Pin::serialRx, HIGH);  // Prevents noise on line
-        delay(10);  // time to settle
-        DL();
-        if (!pinsPrinted) {
-            DL(">>>DEBUG ENABLED<<<");
-            D(F("    OWB's power: ")); DL(Pin::owbMosfet);
-            D(F("    OWB A data: ")); DL(Pin::owbA);
-            D(F("    OWB B data: ")); DL(Pin::owbB);
-            D(F("    LCD pins:"));
-            D(F("        RS- ")); D(Pin::lcdRS);
-            D(F("        EN- ")); D(Pin::lcdEN);
-            D(F("        D4- ")); D(Pin::lcdD4);
-            D(F("        D5- ")); D(Pin::lcdD5);
-            D(F("        D6- ")); D(Pin::lcdD6);
-            D(F("        D7- ")); D(Pin::lcdD7);
-            D(F("        BL- ")); DL(Pin::lcdBL);
-            D(F("    LCD power: ")); DL(Pin::lcdMosfet);
-            D(F("    Aref power: ")); DL(Pin::arfMosfet);
-            D(F("    Encoder A/C: ")); D(Pin::encA);
-            D(F(" / ")); DL(Pin::encC);
-            D(F("    Button: ")); DL(Pin::button);
-            D(F("Data size: ")); DL(sizeof(sma) +
-                                    ((tempSmaOne / tempSmaSample) * 4) +
-                                    ((tempSmaFour / tempSmaSample) * 4));
+void lcd_power(bool on=true) {
+    static bool alreadyOn = false;
+    if (!on) {
+        lcd.clear();
+        delay(1);
+        digitalWrite(Pin::lcdMosfet, LOW);  // mosfet off
+        pinMode(Pin::lcdMosfet, INPUT);  // disconnect
+        pinMode(Pin::lcdBL, INPUT);
+        pinMode(Pin::lcdRS, INPUT);
+        pinMode(Pin::lcdEN, INPUT);
+        pinMode(Pin::lcdD4, INPUT);
+        pinMode(Pin::lcdD5, INPUT);
+        pinMode(Pin::lcdD6, INPUT);
+        pinMode(Pin::lcdD7, INPUT);
+        alreadyOn = false;
+    } else if (!alreadyOn) {
+        pinMode(Pin::lcdBL, OUTPUT);
+        pinMode(Pin::lcdRS, OUTPUT);
+        pinMode(Pin::lcdEN, OUTPUT);
+        pinMode(Pin::lcdD4, OUTPUT);
+        pinMode(Pin::lcdD5, OUTPUT);
+        pinMode(Pin::lcdD6, OUTPUT);
+        pinMode(Pin::lcdD7, OUTPUT);
+        digitalWrite(Pin::lcdBL, LOW); // Backlight OFF!
+        pinMode(Pin::lcdMosfet, OUTPUT);
+        digitalWrite(Pin::lcdMosfet, HIGH);  // low-side mosfet
+        delay(1);
+        lcd.begin(lcdCols, lcdRows);
+        lcd.clear();
+        alreadyOn = true;
+    }
+}
+
+void arf_power(bool on=true) {
+    static bool alreadyOn = false;
+    if (!on) {
+        digitalWrite(Pin::arfMosfet, LOW);  // mosfet off
+        pinMode(Pin::arfMosfet, INPUT); // disconnect
+        pinMode(Pin::battSense, INPUT); // NO SHORT!
+        alreadyOn = false;
+    } else if (!alreadyOn) {
+        pinMode(Pin::battSense, INPUT);
+        pinMode(Pin::arfMosfet, OUTPUT);
+        digitalWrite(Pin::arfMosfet, HIGH);  // low-side mosfet
+        alreadyOn = true;
+    }
+}
+
+void enc_power(bool on=true) {
+    static bool alreadyOn = false;
+    if (!on) {
+        pinMode(Pin::encA, INPUT); // disable required pullups
+        pinMode(Pin::encC, INPUT);
+        pinMode(Pin::button, INPUT);
+        EIMSK &= ~((1<<INT0) | (1<<INT1));  // switch INT1/INT0 off
+        alreadyOn = false;
+    } else if (!alreadyOn) {
+        EIMSK |= ((1<<INT0) | (1<<INT1));  //  switch INT1/INT0 on
+        pinMode(Pin::encA, INPUT_PULLUP);
+        pinMode(Pin::encC, INPUT_PULLUP);
+        pinMode(Pin::button, INPUT_PULLUP);
+        alreadyOn = true;
+    }
+}
+
+#ifdef DEBUG
+    void ser_power(bool on=true) {
+        static bool alreadyOn = false;
+        if (!on) {
+            DL(F("Going to sleep..."));
+            Serial.flush();
+            delay(10); // flush needs more time
+            Serial.end();
+            alreadyOn = false;
+        } else if (!alreadyOn) {
+            pinMode(Pin::serialRx, OUTPUT);
+            pinMode(Pin::serialTx, OUTPUT);
+            Serial.begin(Pin::serialBaud);
+            digitalWrite(Pin::serialRx, HIGH);
+            digitalWrite(Pin::serialRx, HIGH);  // Prevents noise on line
+            delay(1);  // time to settle
             DL();
+            if (!pinsPrinted) {
+                DL(">>>DEBUG ENABLED<<<");
+                D(F("    OWB's power: ")); DL(Pin::owbMosfet);
+                D(F("    OWB A data: ")); DL(Pin::owbA);
+                D(F("    OWB B data: ")); DL(Pin::owbB);
+                D(F("    LCD pins:"));
+                D(F("        RS- ")); D(Pin::lcdRS);
+                D(F("        EN- ")); D(Pin::lcdEN);
+                D(F("        D4- ")); D(Pin::lcdD4);
+                D(F("        D5- ")); D(Pin::lcdD5);
+                D(F("        D6- ")); D(Pin::lcdD6);
+                D(F("        D7- ")); D(Pin::lcdD7);
+                D(F("        BL- ")); DL(Pin::lcdBL);
+                D(F("    LCD power: ")); DL(Pin::lcdMosfet);
+                D(F("    Aref power: ")); DL(Pin::arfMosfet);
+                D(F("    Encoder A/C: ")); D(Pin::encA);
+                D(F(" / ")); DL(Pin::encC);
+                D(F("    Button: ")); DL(Pin::button);
+                D(F("Data size: ")); DL(sizeof(sma) +
+                                        ((tempSmaOne / tempSmaSample) * 4) +
+                                        ((tempSmaFour / tempSmaSample) * 4));
+                DL();
+                Serial.flush();
+            }
+            pinsPrinted = true;
+            alreadyOn = true;
         }
-        pinsPrinted = true;
-    #endif // DEBUG
+    }
+#endif // DEBUG
 
-    // owb
-    pinMode(Pin::owbA, INPUT); // external pull-up
-    pinMode(Pin::owbB, INPUT); // external pull-up
-    pinMode(Pin::owbMosfet, OUTPUT);
-    digitalWrite(Pin::owbMosfet, HIGH); // low-side mosfet
-    // lcd
-    pinMode(Pin::lcdBL, OUTPUT);
-    pinMode(Pin::lcdRS, OUTPUT);
-    pinMode(Pin::lcdEN, OUTPUT);
-    pinMode(Pin::lcdD4, OUTPUT);
-    pinMode(Pin::lcdD5, OUTPUT);
-    pinMode(Pin::lcdD6, OUTPUT);
-    pinMode(Pin::lcdD7, OUTPUT);
-    digitalWrite(Pin::lcdBL, LOW); // Backlight OFF!
-    pinMode(Pin::lcdMosfet, OUTPUT);
-    digitalWrite(Pin::lcdMosfet, HIGH);  // low-side mosfet
-    // Battery sense
-    pinMode(Pin::battSense, INPUT);
-    pinMode(Pin::arfMosfet, OUTPUT);
-    digitalWrite(Pin::arfMosfet, HIGH);  // low-side mosfet
-    // Rotary encoder
-    pinMode(Pin::encA, INPUT_PULLUP);
-    pinMode(Pin::encC, INPUT_PULLUP);
-    pinMode(Pin::button, INPUT_PULLUP);
+void all_pins_up(void){
+    #ifdef DEBUG
+        ser_power(true);
+    #endif // DEBUG
+    cli(); // disable interrupts
+    owb_power(true);
+    enc_power(true);
+    sei(); // enable interrupts
     // Devices need power-on time to settle
-    delay(10);
-    lcd.begin(lcdCols, lcdRows);
-    lcd.clear();
 }
 
 void all_pins_down(void) {
     #ifdef DEBUG
-        DL(F("Going to sleep..."));
-        Serial.flush();
-        delay(10); // flush needs more time
-        Serial.end();
+        ser_power(false);
     #endif // DEBUG
-    // batt sense
-    digitalWrite(Pin::arfMosfet, LOW);  // mosfet off
-    pinMode(Pin::arfMosfet, INPUT); // disconnect
-    pinMode(A0, INPUT); // NO SHORT!
-    // One-wire bus
-    digitalWrite(Pin::owbMosfet, LOW);  // mosfet
-    pinMode(Pin::owbMosfet, INPUT);
-    pinMode(Pin::owbA, INPUT);
-    pinMode(Pin::owbB, INPUT);
-    // LCD Connections
-    digitalWrite(Pin::lcdMosfet, LOW);  // mosfet off
-    pinMode(Pin::lcdMosfet, INPUT);  // disconnect
-    pinMode(Pin::lcdBL, INPUT);
-    pinMode(Pin::lcdRS, INPUT);
-    pinMode(Pin::lcdEN, INPUT);
-    pinMode(Pin::lcdD4, INPUT);
-    pinMode(Pin::lcdD5, INPUT);
-    pinMode(Pin::lcdD6, INPUT);
-    pinMode(Pin::lcdD7, INPUT);
+    cli(); // disable interrupts
+    enc_power(false);
+    arf_power(false);
+    lcd_power(false);
+    owb_power(false);
+    sei(); // enable interrupts
 }
 
 void sleep(void) {
@@ -340,6 +398,7 @@ void updateLcd(TimedEvent* timed_event) {
     #endif // DEBUG
     if (!lcdDisplay)
         return;
+    lcd_power(true);
     lcd.setCursor(0, 0);
     switch (encValue) {
         case EncState::current: lcd.print("Current Temp.   "); break;
@@ -381,28 +440,19 @@ void updateEnc(TimedEvent* timed_event) {
     }
 }
 
-void pressHandler(Button& source) {
-    DL(F("Button pressed"));
-    buttonState = ButtonState::pressed;
-    uiActivity = true;
-}
-
-void releaseHandler(Button& source) {
-    DL(F("Button Released"));
-    buttonState = ButtonState::released;
-    uiActivity = true;
-}
-
 void clickHandler(Button& source) {
-    DL(F("Button Clicked"));
-    buttonState = ButtonState::click;
-    uiActivity = true;
+    if (buttonState == ButtonState::held) {
+        D(F("Button click: "));
+        buttonState = ButtonState::click;
+        uiActivity = true;
+        delay(100);
+    }
 }
 
 void holdHandler(Button& source) {
     D(F("Button Held for: ")); DL(source.holdTime());
     buttonState = ButtonState::held;
-    uiActivity = true;
+    wakeCounter = -1; // back to sleep
 }
 
 void setup(void) {
@@ -425,8 +475,10 @@ void setup(void) {
     all_pins_up();
     DL(F("Setup..."));
 
+/*
     button.pressHandler(pressHandler);
     button.releaseHandler(releaseHandler);
+*/
     button.clickHandler(clickHandler);
     button.holdHandler(holdHandler, buttonHoldTime);
 
