@@ -10,3 +10,6 @@
 [submodule "Button"]
 	path = libraries/external/Button
 	url = https://github.com/virgildisgr4ce/Button.git
+[submodule "arduino-cmake"]
+	path = arduino-cmake
+	url = git://github.com/queezythegreat/arduino-cmake.git
