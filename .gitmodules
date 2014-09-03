@@ -13,3 +13,6 @@
 [submodule "arduino-cmake"]
 	path = arduino-cmake
 	url = git://github.com/queezythegreat/arduino-cmake.git
+[submodule "SerialUI"]
+	path = libraries/external/SerialUI
+	url = https://github.com/psychogenic/SerialUI.git
