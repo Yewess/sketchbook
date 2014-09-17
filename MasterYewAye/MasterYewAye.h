@@ -51,6 +51,18 @@ struct Pin {
     static const uint8_t scl = A5;
 };
 
+struct PowerSense {
+    static const unsigned int arfMv = 3859;
+    static const unsigned int powDivR1 = 11000; // Ohms
+    static const unsigned int powDivR2 = 15000; // Ohms
+    // Voltage divider applied to + terminal to scale range under arfMv value
+    //static const double powDivFact = ( (double)powDivR2 /
+    //                                 ((double)powDivR1 + (double)powDivR2));
+    static const double powDivFact = 0.5769230769230769;
+    static const unsigned int battFull = 6200; // 4x AA in mV
+    static const unsigned int battEmpty = 4200; // Exhausted
+};
+
 struct OwbStatus {
     static const uint8_t converting = 1;
     static const uint8_t notFound = 3;
@@ -59,7 +71,7 @@ struct OwbStatus {
     static const uint8_t busError = 6;
     static const uint8_t notDs18x20 = 7;
     static const uint8_t complete = 8;
-    static const uint8_t changeDev = 9;
+    static const uint8_t none = 9;
 };
 
 struct ButtonState {
@@ -75,6 +87,7 @@ struct EncState {
     static const uint8_t one = 1;
     static const uint8_t four = 2;
     static const uint8_t twelve = 3;
+    static const uint8_t battery = 4;
 };
 
 typedef struct Owb {
@@ -86,7 +99,7 @@ typedef struct Owb {
     SimpleMovingAvg fourHour;
     SimpleMovingAvg twelveHour;
     Owb(uint8_t pin, uint16_t onePoints, uint16_t fourPoints, uint16_t twelvePoints)
-        : bus(pin), x10degrees(checkStatus),
+        : bus(pin), status(OwbStatus::none), x10degrees(checkStatus),
           oneHour(onePoints), fourHour(fourPoints), twelveHour(twelvePoints) {};
 } Owb;
 
@@ -102,17 +115,19 @@ typedef struct Sma {
 } Sma;
 
 static const uint16_t wdtSleep8 = (Millis)7806; // 8 sec avg WDT osc time
-static const Millis lcdTime = (Millis)250; // < 1000ms is unreadable
+static const Millis lcdTime = (Millis)500; // < 1000ms is unreadable
 static const Millis wakeTime = (Millis)100;  // update wake counter
 static const Millis encTime = (Millis)1;
 #ifdef DEBUG
     static const uint8_t sleepCycleMultiplier = 1;
+    static const Millis batterySample = (Millis)270000; // 4.5 minutes (in ms)
     static const Millis tempSmaSample = (Millis)60000; // 1 minute (in ms)
     static const Millis tempSmaOne = (Millis)360000; // 6 minutes SMA
     static const Millis tempSmaFour = (Millis)1440000; // 24 minute SMA
     static const Millis tempSmaTwelve = (Millis)4320000;  // 1.2 hour SMA
 #else
     static const uint8_t sleepCycleMultiplier = 8;
+    static const Millis batterySample = (Millis) 2700000; // 45 minutes (in ms)
     static const Millis tempSmaSample = (Millis)600000; // 10 minutes (in ms)
     static const Millis tempSmaOne = (Millis)3600000; // 1 hour SMA
     static const Millis tempSmaFour = (Millis)14400000; // 4 hour SMA
@@ -121,19 +136,19 @@ static const Millis encTime = (Millis)1;
 static const uint8_t lcdRows = 2;
 static const uint8_t lcdCols = 16;
 static const bool celsius = false;
-static const int buttonHoldTime = 1000;
+static const int buttonHoldTime = 2000;
 static const int8_t wakeMinMultiplier = 10; // minimum * wakeTime to stay awake
 static const int8_t wakeMaxMultiplier = 100; // maximum * wakeTime to stay awake
 
 // globals
 
-uint16_t encMinMax = 3; // MSB: Min; LSB: Max
+uint16_t encMinMax = 4; // MSB: Min; LSB: Max
 uint8_t encValue = EncState::current;
 uint8_t buttonState = ButtonState::none;
 bool uiActivity = false;
 bool lcdDisplay = false;
+bool lcdRefresh = true;
 int8_t wakeCounter = wakeMinMultiplier; // stay awake until 0
-
 volatile Millis sleepCycleCounter = 0;
 
 LiquidCrystal lcd(Pin::lcdRS, Pin::lcdEN, Pin::lcdD4,
@@ -150,8 +165,12 @@ Sma sma(Pin::owbA, Pin::owbB,
 
 Millis currentTime = 0;
 
+unsigned int offMv = 100; // Compensate for protection diode drop
+unsigned int battMvPrev = 0;
+unsigned int battMv = 0;
+
 #ifdef DEBUG
     bool pinsPrinted = false;
-#endif DEBUG
+#endif //DEBUG
 
 #endif // MASTERYEWAYE_H
