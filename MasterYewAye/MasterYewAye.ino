@@ -270,7 +270,9 @@ unsigned int readBattery(void) {
     arf_power(true); // sssslllllooooowwww
     raw = analogRead(Pin::battSense);
     D(F("    battery raw: ")); DL(raw);
-    battMv = map(raw, 0, 1023, offMv, PowerSense::arfMv + offMv);
+    battMv = map(raw, 0, 1023,
+                 PowerSense::offMv,
+                 PowerSense::arfMv + PowerSense::offMv);
     D(F("    battery offset: ")); DL(battMv);
     battMv /= PowerSense::powDivFact;  // remove voltage divider
     D(F("    battery scaled: ")); DL(battMv);
@@ -357,8 +359,12 @@ void sleep(void) {
         sleep_bod_disable(); // Must happen _right_ before sleep_mode();
         sei(); // enable interrupts
         sleep_cpu(); // ZZzzzzzzzz
-        sleep_disable(); // Woke up, disable ISR
-        cli(); // disable interrupts
+        sleep_disable();
+        pinMode(Pin::button, INPUT_PULLUP);  // logic is inverted
+        if (digitalRead(Pin::button) == LOW) { // button is pressed
+            sleepCyclesRemaining = 0; // wake up
+        } else
+            pinMode(Pin::button, INPUT);
     }
     sei();  // enable interrupts
     power_all_enable(); // switch on all internal devices
@@ -373,13 +379,13 @@ void updateWake(TimedEvent* timed_event) {
     if (wakeCounter <= 0) {
         lcd.clear();
         sleep();  // ZZZzzzzzzz
-        uiActivity = false;
         lcdDisplay = false;
+        lcdRefresh = false;
         wakeCounter = wakeMinMultiplier;
         enc.write(encValue * 4);  // looses brains after wake up
         DL("");
         update_time();
-        timed_event->reset();  // deadline mode
+        timed_event->reset();  // count from now, not when slept
         // Zap old temperature readings
         sma.owbA.status = OwbStatus::none;
         sma.owbB.status = OwbStatus::none;
@@ -434,9 +440,13 @@ void updateTwelveHour(TimedEvent* timed_event) {
 void lcdPrintTemp(int16_t centi_temp) {
     if (centi_temp >= 0)
         lcd.print(" ");
-    lcd.print(centi_temp / 10);
-    lcd.print(".");
-    lcd.print(centi_temp - centi_temp / 10 * 10);
+    if (centi_temp == -850)
+        lcd.print("???");
+    else {
+        lcd.print(centi_temp / 10);
+        lcd.print(".");
+        lcd.print(centi_temp - centi_temp / 10 * 10);
+    }
     lcd.print("\xDF"); // degree's symbol
 }
 
@@ -471,13 +481,14 @@ void updateLcdData(void) {  // Only update values
 
 void refreshLcd(void) {  // Paint entire screen
     #ifdef DEBUG
-        D("\nOWB A");
+        D(F("wakeCounter: ")); DL(wakeCounter);
+        D(F("\nOWB A"));
         D(F(" status: ")); D(sma.owbA.status);
         D(F(" x10 Temp: ")); D(sma.owbA.x10degrees);
         D(F(" 1hSMA: ")); D(sma.owbA.oneHour.value());
         D(F(" 4hSMA: ")); D(sma.owbA.fourHour.value());
         D(F(" 12hSMA: ")); DL(sma.owbA.twelveHour.value());
-        D("OWB B");
+        D(F("OWB B"));
         D(F(" status: ")); D(sma.owbB.status);
         D(F(" x10 Temp: ")); D(sma.owbB.x10degrees);
         D(F(" 1hSMA: ")); D(sma.owbB.oneHour.value());
@@ -526,31 +537,17 @@ void updateEnc(TimedEvent* timed_event) {
     if (newPosition != encValue) {
         encValue = newPosition;
         D(F("Encoder select: ")); DL(encValue);
-        uiActivity = true;
         lcdRefresh = true;
+        lcdDisplay = true;
+        wakeCounter = wakeMaxMultiplier;
     }
 }
 
-void clickHandler(Button& source) {
-    if (buttonState != ButtonState::held) {
-        DL(F("Button click:"));
-        buttonState = ButtonState::click;
-        uiActivity = true;
-        lcdRefresh = true;
-        delay(10);  // debounce
-    }
-}
-
-void holdHandler(Button& source) {
-    D(F("Button Held for: ")); DL(source.holdTime());
-    buttonState = ButtonState::held;
-    lcdDisplay = false;
-    lcdRefresh = false;
-    uiActivity = false;
-    wakeCounter = -1; // back to sleep
-    DL("Debug mode: Ignoring sleep request");
-    lcd_power(false);
-    owb_power(false);
+void pressHandler(Button& source) {
+    D(F("Button press: ")); DL(source.holdTime());
+    lcdRefresh = true;
+    lcdDisplay = true;
+    wakeCounter = wakeMaxMultiplier;
 }
 
 void setup(void) {
@@ -578,8 +575,10 @@ void setup(void) {
     DL(F("Setup..."));
     enc_power(true);
 
-    button.clickHandler(clickHandler);
-    button.holdHandler(holdHandler, buttonHoldTime);
+    button.pressHandler(pressHandler);
+    wakeCounter = wakeMaxMultiplier;
+    lcdRefresh = true;
+    lcdDisplay = true;
 
     enc.write(0);
     update_time();
@@ -609,11 +608,9 @@ void loop(void) {
     static TimedEvent batteryUpdate(currentTime,
                                     batterySample,  // 45 minutes
                                     updateBattery);
-    #ifndef DEBUG
-        static TimedEvent wakeUpdate(currentTime,
-                                     wakeTime,
-                                     updateWake);
-    #endif // not DEBUG
+    static TimedEvent wakeUpdate(currentTime,
+                                 wakeTime,
+                                 updateWake);
     static TimedEvent encUpdate(currentTime,
                                 encTime,
                                 updateEnc);
@@ -627,18 +624,5 @@ void loop(void) {
     button.process(); update_time();
     encUpdate.update(); update_time();
     lcdUpdate.update(); update_time();
-    if (uiActivity) {
-        // don't check again, unless button/enc activity
-        uiActivity = false;
-        // Do start displaying stuff now
-        lcdDisplay = true;
-        // clear last round button's status
-        buttonState = ButtonState::none;
-        // delay going to sleep
-        wakeCounter = wakeMaxMultiplier;
-    }
-    // Don't sleep in debug mode
-    #ifndef DEBUG
-        wakeUpdate.update();
-    #endif // not DEBUG
+    wakeUpdate.update();
 }

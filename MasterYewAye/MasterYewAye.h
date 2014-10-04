@@ -1,7 +1,7 @@
 #ifndef MASTERYEWAYE_H
 #define MASTERYEWAYE_H
 
-//#define NODEBUG
+#define NODEBUG
 #ifndef NODEBUG
     #define DEBUG
     #define D(...) Serial.print(__VA_ARGS__)
@@ -61,6 +61,7 @@ struct PowerSense {
     static const double powDivFact = 0.5769230769230769;
     static const unsigned int battFull = 6200; // 4x AA in mV
     static const unsigned int battEmpty = 4200; // Exhausted
+    static const unsigned int offMv = 100; // Compensate for protection diode drop
 };
 
 struct OwbStatus {
@@ -72,14 +73,6 @@ struct OwbStatus {
     static const uint8_t notDs18x20 = 7;
     static const uint8_t complete = 8;
     static const uint8_t none = 9;
-};
-
-struct ButtonState {
-    static const uint8_t none = 0;
-    static const uint8_t pressed = 1;
-    static const uint8_t released = 2;
-    static const uint8_t click = 4;
-    static const uint8_t held = 5;
 };
 
 struct EncState {
@@ -114,41 +107,38 @@ typedef struct Sma {
           owbB(pinB, onePointsB, fourPointsB, twelvePointsB) {};
 } Sma;
 
-static const uint16_t wdtSleep8 = (Millis)7806; // 8 sec avg WDT osc time
-static const Millis lcdTime = (Millis)500; // < 1000ms is unreadable
-static const Millis wakeTime = (Millis)100;  // update wake counter
-static const Millis encTime = (Millis)1;
+static const uint16_t wdtSleep8 = 7806UL; // 8 sec avg WDT osc time
+static const Millis lcdTime = 500UL; // < 1000ms is unreadable
+static const Millis wakeTime = 100UL;  // update wake counter
+static const Millis encTime = 1UL;
 #ifdef DEBUG
     static const uint8_t sleepCycleMultiplier = 1;
-    static const Millis batterySample = (Millis)270000; // 4.5 minutes (in ms)
-    static const Millis tempSmaSample = (Millis)60000; // 1 minute (in ms)
-    static const Millis tempSmaOne = (Millis)360000; // 6 minutes SMA
-    static const Millis tempSmaFour = (Millis)1440000; // 24 minute SMA
-    static const Millis tempSmaTwelve = (Millis)4320000;  // 1.2 hour SMA
+    static const Millis batterySample = 270000UL; // 4.5 minutes (in ms)
+    static const Millis tempSmaSample = 60000UL; // 1 minute (in ms)
+    static const Millis tempSmaOne = 360000UL; // 6 minutes SMA
+    static const Millis tempSmaFour = 1440000UL; // 24 minute SMA
+    static const Millis tempSmaTwelve = 4320000UL;  // 1.2 hour SMA
 #else
     static const uint8_t sleepCycleMultiplier = 8;
-    static const Millis batterySample = (Millis) 2700000; // 45 minutes (in ms)
-    static const Millis tempSmaSample = (Millis)600000; // 10 minutes (in ms)
-    static const Millis tempSmaOne = (Millis)3600000; // 1 hour SMA
-    static const Millis tempSmaFour = (Millis)14400000; // 4 hour SMA
-    static const Millis tempSmaTwelve = (Millis)43200000;  // 12 hours SMA
+    static const Millis batterySample = 2700000UL; // 45 minutes (in ms)
+    static const Millis tempSmaSample = 600000UL; // 10 minutes (in ms)
+    static const Millis tempSmaOne = 3600000UL; // 1 hour SMA
+    static const Millis tempSmaFour = 14400000UL; // 4 hour SMA
+    static const Millis tempSmaTwelve = 43200000UL;  // 12 hours SMA
 #endif // DEBUG
 static const uint8_t lcdRows = 2;
 static const uint8_t lcdCols = 16;
 static const bool celsius = false;
-static const int buttonHoldTime = 2000;
-static const int8_t wakeMinMultiplier = 10; // minimum * wakeTime to stay awake
-static const int8_t wakeMaxMultiplier = 100; // maximum * wakeTime to stay awake
+static const int8_t wakeMinMultiplier = 10; // 1 sec
+static const int16_t wakeMaxMultiplier = 300; // 30 sec
 
 // globals
 
 uint16_t encMinMax = 4; // MSB: Min; LSB: Max
 uint8_t encValue = EncState::current;
-uint8_t buttonState = ButtonState::none;
-bool uiActivity = false;
 bool lcdDisplay = false;
 bool lcdRefresh = true;
-int8_t wakeCounter = wakeMinMultiplier; // stay awake until 0
+int16_t wakeCounter = wakeMinMultiplier; // stay awake until 0
 volatile Millis sleepCycleCounter = 0;
 
 LiquidCrystal lcd(Pin::lcdRS, Pin::lcdEN, Pin::lcdD4,
@@ -165,7 +155,6 @@ Sma sma(Pin::owbA, Pin::owbB,
 
 Millis currentTime = 0;
 
-unsigned int offMv = 100; // Compensate for protection diode drop
 unsigned int battMvPrev = 0;
 unsigned int battMv = 0;
 
