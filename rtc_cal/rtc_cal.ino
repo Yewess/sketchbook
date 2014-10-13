@@ -5,27 +5,25 @@
 
 class Eeprom;
 
-
 // Hold all EEPROM initial data private, prevent accidents.
 class EepromData {
     friend Eeprom;
-    uint64_t magic = 0x25f7bb7900000002;
+    uint64_t magic{0x25f7bb7900000003};
 
-    uint32_t ticksPerHour = (60UL * 60UL * 32768UL);
+    uint32_t ticksPerHour{60UL * 60UL * 32768UL};
+    uint8_t clkoutPin{12};
+    uint8_t clkoutMode{INPUT_PULLUP};
 
-    uint8_t clkoutPin = 12;
-    uint8_t clkoutMode = INPUT_PULLUP;
+    uint8_t intPin{8};
+    uint8_t intMode{INPUT_PULLUP};
 
-    uint8_t intPin = 8;
-    uint8_t intMode = INPUT_PULLUP;
+    enum bitsBV { CALIBRATED }; // for reference only
+    uint8_t bits{0b00000000};
 } eepromData EEMEM;  // data will be in .eep file
 
 // Access methods for EepromData
 class Eeprom : EepromData {
-    void setupPin(uint8_t pin, uint8_t mode) { pinMode(pin, mode); }
-
     public:
-
     bool magicValid(uint64_t& what_magic) { return what_magic == EepromData::magic; }
 
     bool load(void) {
@@ -90,21 +88,111 @@ class Eeprom : EepromData {
     int32_t getTicksPerHour(void) const { return ticksPerHour; }
     void setTicksPerHour(double value) { ticksPerHour = value; }
 
-    void setupClkoutPin(void) { setupPin(clkoutPin, clkoutMode); }
+    bool getCalibrated(void) const { return bitRead(bits, bitsBV::CALIBRATED); }
+    void setCalibrated(bool value) { bitWrite(bits, bitsBV::CALIBRATED, value); }
+
     uint8_t getClkoutPin(void) const { return clkoutPin; }
     void setClkoutPin(uint8_t value) { clkoutPin = value; }
     uint8_t getClkoutMode(void) const { return clkoutMode; }
     void setClkoutMode(uint8_t value) { clkoutPin = value; }
 
-    void setupIntPin(void) { setupPin(intPin, intMode); }
     uint8_t getIntPin(void) const { return intPin; }
     void setIntPin(uint8_t value) { intPin = value; }
     uint8_t getIntMode(void) const { return intMode; }
     void setIntMode(uint8_t value) { intMode = value; }
 };
 
+class Clock {
+    Eeprom& _eeprom;
+
+    void setupPin(uint8_t pin, uint8_t mode) { pinMode(pin, mode); }
+
+    bool tick(bool pinValue) {
+        // Falling edge is what counts
+        static bool was_high = false;
+        if (pinValue) {  // pin is high
+            if (!was_high)
+                was_high = true;
+        } else {  // pin is low
+            if (was_high) {
+                was_high = false;
+                return true;
+            }
+        }
+        return false;
+    }
+    uint32_t countTicksPerHour(void) {
+        uint32_t current=0;
+        uint32_t lastSecond=millis();
+        uint32_t ticks = 0UL;
+        uint32_t start = millis();
+        uint32_t stop = start + 1000UL * 60UL * 60UL;  // ms per hour
+        int32_t last_ms_err=0;
+        digitalWrite(LED_BUILTIN, HIGH);
+        while (true) {
+            current = millis();
+            noInterrupts();
+            if (tick(digitalRead(_eeprom.getClkoutPin())))
+                ticks++;
+            if (current >= stop)
+                break;
+            interrupts();
+            if (current >= (lastSecond + 1000)) {
+                lastSecond = current;
+                digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+                uint32_t seconds = ticks / 32767UL;
+                uint32_t expected_ticks = seconds * 32768;
+                int32_t diff = expected_ticks - ticks;
+                int32_t ms_err = ((1000000L / 32767L) * diff) / 1000L;
+                Serial.print("\r");
+                Serial.print(ms_err); Serial.print(F("mS error ("));
+                Serial.print(ms_err - last_ms_err);
+                Serial.print(F(" ms/s)          "));
+                last_ms_err = ms_err;
+            }
+        }
+        interrupts();
+        digitalWrite(LED_BUILTIN, LOW);
+        Serial.println();
+        return ticks;
+    }
+
+    public:
+    Clock(Eeprom& eeprom) : _eeprom(eeprom) {
+        setupPin(_eeprom.getClkoutPin(), _eeprom.getClkoutMode());
+        setupPin(_eeprom.getIntPin(), _eeprom.getIntMode());
+    }
+    void calTicksPerHour(void);  // Takes 24 hours!
+};
+
+void Clock::calTicksPerHour(void) {
+    if (!_eeprom.getCalibrated())
+        // Monitor over 24 hours (incorp. temp changes etc)
+        for (int i = 0; i < 24; i++) {
+            uint32_t eepromTPH = _eeprom.getTicksPerHour();
+            uint32_t measured = countTicksPerHour();  // Takes an hour!
+            int32_t diff = measured - eepromTPH;
+            Serial.println();
+            Serial.print(eepromTPH);
+            Serial.print(F(" - ")); Serial.print(measured);
+            Serial.print(F(" = ")); Serial.print(diff);
+            Serial.print(F("  (")); Serial.print(measured / (60UL * 60UL));
+            Serial.println(F(" Hz)"));
+            static int32_t lastDiff = 0x7FFFFFFF;
+            if (abs(diff) < abs(lastDiff)) {
+                _eeprom.setTicksPerHour(measured);
+                lastDiff = diff;
+            }
+            // In case of bugs, don't break EEPROM
+            static int writesLeft = 24;
+            if (--writesLeft > 0)
+                _eeprom.save();
+    }
+    _eeprom.setCalibrated(true);
+}
+
 Rtc_Pcf8563 rtc;
-Eeprom* eeprom;  // staticly allocated in setup()
+Clock* clock;
 
 void setup(void) {
     Serial.begin(115200);
@@ -114,10 +202,10 @@ void setup(void) {
     digitalWrite(LED_BUILTIN, LOW);
 
     // call constructor _after_ Serial is setup
-    static Eeprom _eeprom;
-    eeprom = &_eeprom;
-    eeprom->setupClkoutPin();
-    eeprom->setupIntPin();
+    static Eeprom eeprom;
+    static Clock _clock(eeprom);
+    clock = &_clock;
+    clock->calTicksPerHour();
 
     Wire.begin();
     rtc.clearStatus();
@@ -126,52 +214,5 @@ void setup(void) {
     Serial.println(F("loop()"));
 }
 
-inline bool tick(bool pinValue) {
-    // Falling edge is what counts
-    static bool was_high = false;
-    if (pinValue) {  // pin is high
-        if (!was_high)
-            was_high = true;
-    } else {  // pin is low
-        if (was_high) {
-            was_high = false;
-            return true;
-        }
-    }
-    return false;
-}
-
-inline uint32_t ticksPerHour(void) {
-    uint32_t ticks = 0UL;
-    uint32_t start = millis();
-    uint32_t stop = start + 1000UL * 60UL * 60UL;  // ms per hour
-    digitalWrite(LED_BUILTIN, HIGH);
-    while (millis() < stop) {
-        noInterrupts();
-        if (tick(digitalRead(eeprom->getClkoutPin())))
-            ticks++;
-        interrupts();
-    }
-    digitalWrite(LED_BUILTIN, LOW);
-    return ticks;
-}
-
 void loop(void) {
-    uint32_t eepromTPH = eeprom->getTicksPerHour();
-    Serial.print(eepromTPH);
-    uint32_t measured = ticksPerHour();  // Takes an hour!
-    Serial.print(F(" - ")); Serial.print(measured);
-    int32_t diff = measured - eepromTPH;
-    Serial.print(F(" = ")); Serial.print(diff);
-    Serial.print(F("  (")); Serial.print(measured / (60UL * 60UL));
-    Serial.println(F(" Hz)"));
-    static int32_t lastDiff = 0x7FFFFFFF;
-    if (abs(diff) < abs(lastDiff)) {
-        eeprom->setTicksPerHour(measured);
-        lastDiff = diff;
-    }
-    // In case of bugs, don't break EEPROM
-    static int writesLeft = 24;
-    if (--writesLeft > 0)
-        eeprom->save();
 }
