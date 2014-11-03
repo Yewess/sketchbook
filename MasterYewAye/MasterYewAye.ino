@@ -295,12 +295,20 @@ uint8_t percentBattery(void) {
 }
 
 void update_time(void) {
-    currentTime = millis();
-    // TODO: when (sleepCycleCounter * wdtSleep8) => -1UL - wdtSleep8
-    //       reset sleepCycleCounter back to 1;
-    // prevent lost-time accumulation from overflowing
-    for (Millis c=0; c < sleepCycleCounter; c++)
-        currentTime += wdtSleep8;  // okay if this overflows
+    static Millis oldCycleCnt = 0;
+    static Millis offset = 0;
+
+    if (oldCycleCnt != sleepCycleCounter) {
+        if (sleepCycleCounter >= (4294967295UL / wdtSleep8)) {
+            // Probably not correct, but only rarely breaks
+            sleepCycleCounter = 1;  // would wrap currentTime
+            oldCycleCnt = 1;  // at least by one sleep period
+        } else {
+            oldCycleCnt = sleepCycleCounter;
+        }
+        offset = sleepCycleCounter * wdtSleep8;
+    }
+    currentTime = millis() + offset;
 }
 
 void updateTemps(void) {
@@ -520,7 +528,8 @@ void updateLcd(TimedEvent* timed_event) {
     if (lcdRefresh)
         refreshLcd();  // Re-paint entire screen
     else
-        updateLcdData();  // Pain only new values
+        updateLcdData();  // Paint only new values
+        readBattery();  // sssllllooowwww (while user is reading)
 }
 
 void updateEnc(TimedEvent* timed_event) {
@@ -540,6 +549,7 @@ void updateEnc(TimedEvent* timed_event) {
         lcdRefresh = true;
         lcdDisplay = true;
         wakeCounter = wakeMaxMultiplier;
+        refreshLcd();
     }
 }
 
@@ -547,6 +557,7 @@ void pressHandler(Button& source) {
     D(F("Button press: ")); DL(source.holdTime());
     lcdRefresh = true;
     lcdDisplay = true;
+    refreshLcd();
     wakeCounter = wakeMaxMultiplier;
 }
 
