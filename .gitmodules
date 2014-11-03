@@ -16,3 +16,6 @@
 [submodule "SerialUI"]
 	path = libraries/external/SerialUI
 	url = https://github.com/psychogenic/SerialUI.git
+[submodule "Rtc_Pcf8563"]
+	path = libraries/external/Rtc_Pcf8563
+	url = git@github.com:Yewess/Rtc_Pcf8563.git
