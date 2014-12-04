@@ -19,3 +19,6 @@
 [submodule "Rtc_Pcf8563"]
 	path = libraries/external/Rtc_Pcf8563
 	url = git@github.com:Yewess/Rtc_Pcf8563.git
+[submodule "libraries/external/Eep"]
+	path = libraries/external/Eep
+	url = git@github.com:Yewess/Eep.git
