@@ -25,7 +25,7 @@ generate_arduino_firmware(${CMAKE_PROJECT_NAME}
      SKETCH ${CMAKE_CURRENT_SOURCE_DIR}
      PORT /dev/ttyACM0
      SERIAL gtkterm --port @SERIAL_PORT@ --speed 115200
-     PROGRAMMER usbtinyisp)
+     PROGRAMMER arduino)
 add_custom_target(serial DEPENDS ${CMAKE_PROJECT_NAME} ${CMAKE_PROJECT_NAME}-serial)
 set_property(TARGET ${CMAKE_PROJECT_NAME}
              APPEND_STRING
